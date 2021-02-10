@@ -75,7 +75,9 @@ class DeepracerGym(gym.Env):
 
         return [pose_deepracer,lidar_range_values],reward,done,info
         
-
+    
+    def render(self):
+        pass
         
 
 

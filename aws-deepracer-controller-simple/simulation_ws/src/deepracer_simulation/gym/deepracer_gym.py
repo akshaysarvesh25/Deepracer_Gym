@@ -43,7 +43,7 @@ class DeepracerGym(gym.Env):
     def reset(self):
         rospy.wait_for_service('/gazebo/reset_simulation')
         try:
-            self.eset_simulation_proxy()
+            self.reset_simulation_proxy()
             print('Simulation reset')
         except rospy.ServiceException as exc:
             print("Reset Service did not process request: " + str(exc))
@@ -197,6 +197,8 @@ def start():
     x_sub1 = rospy.Subscriber("/move_base_simple/goal",PoseStamped,get_clicked_point)
     x_sub2 = rospy.Subscriber("/scan",LaserScan,get_lidar_data)
     env =  DeepracerGym()
+    obs = env.reset()
+    print(obs)
     """
 
 

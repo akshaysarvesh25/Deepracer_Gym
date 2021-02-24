@@ -10,7 +10,7 @@ import tf
 from geometry_msgs.msg import PoseStamped
 from sensor_msgs.msg import LaserScan
 #from cvxpy import *
-import cvxpy as cp
+#import cvxpy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 import math
@@ -35,7 +35,8 @@ class DeepracerGym(gym.Env):
         
         n_actions = 2 #velocity,steering
         metadata = {'render.modes': ['console']}
-        self.action_space = spaces.Discrete(n_actions)
+        #self.action_space = spaces.Discrete(n_actions)
+        self.action_space = spaces.Box(np.array([-10, -10]), np.array([10, 10]), dtype = np.float32)
         self.pose_observation_space = spaces.Box(np.array([-10000,-10000,-6.3]),np.array([10000,10000,6.3]),dtype = np.float32)
         self.lidar_observation_space = spaces.Box(np.array([0]),np.array([13]),dtype = np.float32)
         self.observation_space = spaces.Tuple([self.pose_observation_space,self.lidar_observation_space])
@@ -213,9 +214,11 @@ def start():
     while not rospy.is_shutdown():
         time.sleep(1)
         #obs = env.reset()
-        action = np.array([1,1.2])
-        x = env.step(action)
-        print(x)
+        action = np.array([5,1.2])
+        x, reward, done, info = env.step(action)
+        print(x[0][0])
+        print(reward)
+
         """
 
 

@@ -18,7 +18,8 @@ import gym
 from gym import spaces
 from std_srvs.srv import Empty
 from stable_baselines.common.env_checker import check_env
-
+from stable_baselines.sac.policies import MlpPolicy
+from stable_baselines import SAC
 
 
 x_pub = rospy.Publisher('/vesc/low_level/ackermann_cmd_mux/output',AckermannDriveStamped,queue_size=1)
@@ -49,16 +50,22 @@ class DeepracerGym(gym.Env):
         self.lidar_observation_space = spaces.Box(0,1.,shape=(720,),dtype = np.float32)
         self.observation_space = spaces.Tuple((self.pose_observation_space,self.lidar_observation_space))
         self.pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
+        self.unpause = rospy.ServiceProxy('/gazebo/unpause_physics', Empty)
         self.reset_simulation_proxy = rospy.ServiceProxy('/gazebo/reset_simulation', Empty)
         self.target_point_ = np.array([target_point[0]/MAX_X,target_point[1]/MAX_Y])
         self.lidar_ranges_ = np.zeros(720)
     
     def reset(self):        
         global yaw_car
-        time.sleep(1e-2)        
+        #time.sleep(1e-2)        
         rospy.wait_for_service('/gazebo/reset_simulation')
         try:
+            # pause physics
+            # reset simulation
+            # un-pause physics
+            self.pause()
             self.reset_simulation_proxy()
+            self.unpause()
             print('Simulation reset')
         except rospy.ServiceException as exc:
             print("Reset Service did not process request: " + str(exc))

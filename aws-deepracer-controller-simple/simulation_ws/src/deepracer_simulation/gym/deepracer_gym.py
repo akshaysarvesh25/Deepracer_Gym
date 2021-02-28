@@ -23,9 +23,9 @@ from stable_baselines.common.env_checker import check_env
 
 x_pub = rospy.Publisher('/vesc/low_level/ackermann_cmd_mux/output',AckermannDriveStamped,queue_size=1)
 pos = [0,0]
-target_point = [5,5]
+target_point = [-1,0]
 yaw_car = 0
-THRESHOLD_DISTANCE_2_GOAL=0.6
+THRESHOLD_DISTANCE_2_GOAL = 0.6
 
 
 class DeepracerGym(gym.Env):
@@ -59,9 +59,9 @@ class DeepracerGym(gym.Env):
 
     def step(self,action):
         global yaw_car
-        print('Taking action ')
-        print('Changing velocity to : ',action[0],' m/s')
-        print('Changing steering angle to : ',action[1],' radians')
+        # print('Taking action ')
+        # print('Changing velocity to : ',action[0],' m/s')
+        # print('Changing steering angle to : ',action[1],' radians')
         global x_pub
         msg = AckermannDriveStamped()
         msg.drive.speed = action[0]
@@ -70,15 +70,17 @@ class DeepracerGym(gym.Env):
         reward = 0
         done = False
         if(abs(pos[0]-self.target_point_[0])<THRESHOLD_DISTANCE_2_GOAL and  abs(pos[1]-self.target_point_[1])<THRESHOLD_DISTANCE_2_GOAL):
-            reward = 1000
+            reward = 1
+            print('Goal reached')
             done = True
-        print(self.lidar_ranges_)
+        # print(self.lidar_ranges_)
         self.lidar_ranges_ = np.array(lidar_range_values)
-        print(self.lidar_ranges_)
+        # print(self.lidar_ranges_)
         
         if(min(self.lidar_ranges_)<0.4):
-            reward = -1000
-            done = False
+            reward = -1
+            print('Dead')
+            done = True
             print('Simulation reset because of collission')
         
         pose_deepracer = np.array([pos[0],pos[1],yaw_car])
@@ -239,9 +241,21 @@ def start():
 
     while not rospy.is_shutdown():
         time.sleep(1)
-        print('-------',check_env(env))
-        
-        # break
+        # print('-------',check_env(env))
+        max_time_step = 1000000
+        max_eps = 10
+        e = 0
+        state = env.reset()   
+        while(e < max_eps):
+            e += 1                   
+            for _ in range(max_time_step):
+                action = np.array([3,0])
+                n_state,reward,done,info = env.step(action)
+                if done:
+                    print('Yaay')
+                    state = env.reset()
+                    break
+            # break
         #obs = env.reset()
         # action = np.array([5,1.2])
         # x, reward, done, info = env.step(action)

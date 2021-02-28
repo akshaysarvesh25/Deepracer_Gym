@@ -25,20 +25,20 @@ x_pub = rospy.Publisher('/vesc/low_level/ackermann_cmd_mux/output',AckermannDriv
 pos = [0,0]
 yaw_car = 0
 MAX_VEL = 10.
-steer_precision = 1e-3
+steer_precision = 0#1e-3
 MAX_STEER = (np.pi*0.25) - steer_precision
 MAX_YAW = 2*np.pi
-MAX_X = 1e2
-MAX_Y = 1e2
-target_x = 50/MAX_X
-target_y = 50/MAX_Y
+MAX_X = 20
+MAX_Y = 20
+# target_x = 50/MAX_X
+# target_y = 50/MAX_Y
 max_lidar_value = 14
-target_point = [target_x,target_y]
+# target_point = [target_x,target_y]
 THRESHOLD_DISTANCE_2_GOAL = 0.6/max(MAX_X,MAX_Y)
 
 class DeepracerGym(gym.Env):
 
-    def __init__(self):
+    def __init__(self,target_point):
         super(DeepracerGym,self).__init__()
         
         n_actions = 2 #velocity,steering
@@ -50,7 +50,7 @@ class DeepracerGym(gym.Env):
         self.observation_space = spaces.Tuple((self.pose_observation_space,self.lidar_observation_space))
         self.pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
         self.reset_simulation_proxy = rospy.ServiceProxy('/gazebo/reset_simulation', Empty)
-        self.target_point_ = target_point
+        self.target_point_ = np.array([target_point[0]/MAX_X,target_point[1]/MAX_Y])
         self.lidar_ranges_ = np.zeros(720)
     
     def reset(self):
@@ -64,6 +64,15 @@ class DeepracerGym(gym.Env):
         pose_deepracer = np.array([pos[0],pos[1],yaw_car],dtype=np.float32)        
         
         return (pose_deepracer,self.lidar_ranges_)
+
+    
+    def get_reward(self,x,y):
+        x_target = self.target_point_[0]
+        y_target = self.target_point_[1]
+        return max(-1, -1*np.sqrt((x - x_target)**2 + (y - y_target)**2)) # reward is -1*distance to target, limited to [-1,0]
+
+
+
 
     def step(self,action):
         global yaw_car
@@ -79,6 +88,7 @@ class DeepracerGym(gym.Env):
         done = False
 
         if((abs(pos[0]) < 1.) and (abs(pos[1]) < 1.) ):
+            reward = self.get_reward(pos[0],pos[1])
 
             if(abs(pos[0]-self.target_point_[0])<THRESHOLD_DISTANCE_2_GOAL and  abs(pos[1]-self.target_point_[1])<THRESHOLD_DISTANCE_2_GOAL):
                 reward = 1            
@@ -264,30 +274,24 @@ def start():
     x=rospy.Subscriber("/gazebo/model_states_drop",ModelStates,get_vehicle_state)
     x_sub1 = rospy.Subscriber("/move_base_simple/goal",PoseStamped,get_clicked_point)
     x_sub2 = rospy.Subscriber("/scan",LaserScan,get_lidar_data)
-    env =  DeepracerGym()
-
+    target_point = [0,0]
+    env =  DeepracerGym(target_point)
+    # max_time_step = 1000000
+    max_eposide = 100
+    e = 0
     while not rospy.is_shutdown():
-        time.sleep(1)
-        print('-------',check_env(env))
-        max_time_step = 1000
-        max_eps = 10
-        e = 0
-        state = env.reset()   
-        while(e < max_eps):
-            e += 1                   
-            for _ in range(max_time_step):
-                action = np.array([0.1,0.3])
+        time.sleep(1)        
+        while(e < max_eposide):
+            e += 1      
+            state = env.reset()
+            Flag = False                             
+            while(~Flag):
+                action = np.array([0.1,0.0])
                 n_state,reward,done,info = env.step(action)
-                if done:
-                    state = env.reset()
+                print(reward)
+                if done:                   
+                    Flag = True
                     break
-            # break
-        #obs = env.reset()
-        # action = np.array([5,1.2])
-        # x, reward, done, info = env.step(action)
-        # print(x[0][0])
-        # print(reward)
-
         """
 
 

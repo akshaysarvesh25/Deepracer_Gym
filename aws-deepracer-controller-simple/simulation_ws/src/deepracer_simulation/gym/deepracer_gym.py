@@ -23,10 +23,18 @@ from stable_baselines.common.env_checker import check_env
 
 x_pub = rospy.Publisher('/vesc/low_level/ackermann_cmd_mux/output',AckermannDriveStamped,queue_size=1)
 pos = [0,0]
-target_point = [-1,0]
 yaw_car = 0
-THRESHOLD_DISTANCE_2_GOAL = 0.6
-
+MAX_VEL = 10.
+steer_precision = 1e-3
+MAX_STEER = (np.pi*0.25) - steer_precision
+MAX_YAW = 2*np.pi
+MAX_X = 1e2
+MAX_Y = 1e2
+target_x = 50/MAX_X
+target_y = 50/MAX_Y
+max_lidar_value = 14
+target_point = [target_x,target_y]
+THRESHOLD_DISTANCE_2_GOAL = 0.6/max(MAX_X,MAX_Y)
 
 class DeepracerGym(gym.Env):
 
@@ -36,9 +44,9 @@ class DeepracerGym(gym.Env):
         n_actions = 2 #velocity,steering
         metadata = {'render.modes': ['console']}
         #self.action_space = spaces.Discrete(n_actions)
-        self.action_space = spaces.Box(np.array([-10, -10]), np.array([10, 10]), dtype = np.float32)
-        self.pose_observation_space = spaces.Box(np.array([-10000,-10000,-6.3]),np.array([10000,10000,6.3]),dtype = np.float32)
-        self.lidar_observation_space = spaces.Box(0,np.inf,shape=(720,),dtype = np.float32)
+        self.action_space = spaces.Box(np.array([-1., -1.]), np.array([1., 1.]), dtype = np.float32)
+        self.pose_observation_space = spaces.Box(np.array([-1. , -1., -1.]),np.array([1., 1., 1.]),dtype = np.float32)
+        self.lidar_observation_space = spaces.Box(0,1.,shape=(720,),dtype = np.float32)
         self.observation_space = spaces.Tuple((self.pose_observation_space,self.lidar_observation_space))
         self.pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
         self.reset_simulation_proxy = rospy.ServiceProxy('/gazebo/reset_simulation', Empty)
@@ -64,26 +72,36 @@ class DeepracerGym(gym.Env):
         # print('Changing steering angle to : ',action[1],' radians')
         global x_pub
         msg = AckermannDriveStamped()
-        msg.drive.speed = action[0]
-        msg.drive.steering_angle = action[1]
+        msg.drive.speed = action[0]*MAX_VEL
+        msg.drive.steering_angle = action[1]*MAX_STEER
         x_pub.publish(msg)
         reward = 0
         done = False
-        if(abs(pos[0]-self.target_point_[0])<THRESHOLD_DISTANCE_2_GOAL and  abs(pos[1]-self.target_point_[1])<THRESHOLD_DISTANCE_2_GOAL):
-            reward = 1
-            print('Goal reached')
+
+        if((abs(pos[0]) < 1.) and (abs(pos[1]) < 1.) ):
+
+            if(abs(pos[0]-self.target_point_[0])<THRESHOLD_DISTANCE_2_GOAL and  abs(pos[1]-self.target_point_[1])<THRESHOLD_DISTANCE_2_GOAL):
+                reward = 1            
+                done = True
+                print('Goal Reached')                
+           
+            self.lidar_ranges_ = np.array(lidar_range_values)            
+            if(min(self.lidar_ranges_)<0.4/max_lidar_value):
+                reward = -1            
+                done = True
+                print('Simulation reset because of collission')
+
+            pose_deepracer = np.array([pos[0],pos[1],yaw_car])
+
+        else: 
             done = True
-        # print(self.lidar_ranges_)
-        self.lidar_ranges_ = np.array(lidar_range_values)
-        # print(self.lidar_ranges_)
-        
-        if(min(self.lidar_ranges_)<0.4):
+            print('Outside Range')
             reward = -1
-            print('Dead')
-            done = True
-            print('Simulation reset because of collission')
+            temp_pos0 = min(max(pos[0],-1.),1.) #keeping it in [-1.,1.]
+            temp_pos1 = min(max(pos[1],-1.),1.) #keeping it in [-1.,1.]
+            pose_deepracer = np.array([temp_pos0, temp_pos1, yaw_car])
         
-        pose_deepracer = np.array([pos[0],pos[1],yaw_car])
+        
 
         info = {}
 
@@ -179,8 +197,8 @@ def get_vehicle_state(data):
     
     global pos,velocity,old_pos
     racecar_pose = data.pose[2]
-    pos[0] = racecar_pose.position.x
-    pos[1] = racecar_pose.position.y
+    pos[0] = racecar_pose.position.x/MAX_X
+    pos[1] = racecar_pose.position.y/MAX_Y
     quaternion = (
             data.pose[2].orientation.x,
             data.pose[2].orientation.y,
@@ -190,7 +208,7 @@ def get_vehicle_state(data):
     q = quaternion
     euler =  euler_from_quaternion(q[0],q[1],q[2],q[3])
     yaw = euler[2]
-    yaw_car = yaw
+    yaw_car = yaw/MAX_YAW
     velocity = get_current_velocity(old_pos[0],old_pos[1],pos[0],pos[1])
     # print(pos[0],pos[1],yaw)
     #print('velocity = ',velocity)
@@ -222,10 +240,19 @@ def get_current_velocity(x_old,y_old,x_new,y_new):
 
 def get_lidar_data(data):
     #print(type(data.ranges))
-    i = 1+1
+    # i = 1+1
     global lidar_range_values
+    
+    # normalized_ranges = []
+    # for vals in data.ranges:
+    #     normalized_ranges.append(vals/14)
+    #     if(vals>=12.00):
+    #         normalized_ranges.append(1)
+
     lidar_range_values = np.array(data.ranges,dtype=np.float32)
-    #print(lidar_range_values)
+    lidar_range_values = np.nan_to_num(lidar_range_values, copy=True, posinf=max_lidar_value)
+    lidar_range_values = lidar_range_values/max_lidar_value
+    # print(lidar_range_values)
 
 
 
@@ -241,18 +268,17 @@ def start():
 
     while not rospy.is_shutdown():
         time.sleep(1)
-        # print('-------',check_env(env))
-        max_time_step = 1000000
+        print('-------',check_env(env))
+        max_time_step = 1000
         max_eps = 10
         e = 0
         state = env.reset()   
         while(e < max_eps):
             e += 1                   
             for _ in range(max_time_step):
-                action = np.array([3,0])
+                action = np.array([0.1,0.3])
                 n_state,reward,done,info = env.step(action)
                 if done:
-                    print('Yaay')
                     state = env.reset()
                     break
             # break

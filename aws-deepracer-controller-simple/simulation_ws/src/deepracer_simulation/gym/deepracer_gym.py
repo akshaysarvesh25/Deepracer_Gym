@@ -53,8 +53,9 @@ class DeepracerGym(gym.Env):
         self.target_point_ = np.array([target_point[0]/MAX_X,target_point[1]/MAX_Y])
         self.lidar_ranges_ = np.zeros(720)
     
-    def reset(self):
+    def reset(self):        
         global yaw_car
+        time.sleep(1e-2)        
         rospy.wait_for_service('/gazebo/reset_simulation')
         try:
             self.reset_simulation_proxy()
@@ -99,7 +100,7 @@ class DeepracerGym(gym.Env):
             if(min(self.lidar_ranges_)<0.4/max_lidar_value):
                 reward = -1            
                 done = True
-                print('Simulation reset because of collission')
+                print('Collission')
 
             pose_deepracer = np.array([pos[0],pos[1],yaw_car])
 
@@ -276,21 +277,21 @@ def start():
     x_sub2 = rospy.Subscriber("/scan",LaserScan,get_lidar_data)
     target_point = [0,0]
     env =  DeepracerGym(target_point)
-    # max_time_step = 1000000
-    max_eposide = 100
+    max_time_step = 100000
+    max_eposide = 1000
     e = 0
     while not rospy.is_shutdown():
-        time.sleep(1)        
+        time.sleep(1) #Do not remove this 
+        state = env.reset()        
         while(e < max_eposide):
-            e += 1      
-            state = env.reset()
-            Flag = False                             
-            while(~Flag):
+            e += 1  
+            # state = env.reset()          
+            for _ in range(max_time_step):
                 action = np.array([0.1,0.0])
                 n_state,reward,done,info = env.step(action)
-                print(reward)
-                if done:                   
-                    Flag = True
+                # print(reward)
+                if done:
+                    state = env.reset()                   
                     break
         """
 

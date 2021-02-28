@@ -17,7 +17,7 @@ import math
 import gym
 from gym import spaces
 from std_srvs.srv import Empty
-#from stable_baselines.common.env_checker import check_env
+from stable_baselines.common.env_checker import check_env
 
 
 
@@ -38,12 +38,12 @@ class DeepracerGym(gym.Env):
         #self.action_space = spaces.Discrete(n_actions)
         self.action_space = spaces.Box(np.array([-10, -10]), np.array([10, 10]), dtype = np.float32)
         self.pose_observation_space = spaces.Box(np.array([-10000,-10000,-6.3]),np.array([10000,10000,6.3]),dtype = np.float32)
-        self.lidar_observation_space = spaces.Box(np.array([0]),np.array([13]),dtype = np.float32)
-        self.observation_space = spaces.Tuple([self.pose_observation_space,self.lidar_observation_space])
+        self.lidar_observation_space = spaces.Box(0,np.inf,shape=(720,),dtype = np.float32)
+        self.observation_space = spaces.Tuple((self.pose_observation_space,self.lidar_observation_space))
         self.pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
         self.reset_simulation_proxy = rospy.ServiceProxy('/gazebo/reset_simulation', Empty)
         self.target_point_ = target_point
-        self.lidar_ranges_ = np.array(lidar_range_values)
+        self.lidar_ranges_ = np.zeros(720)
     
     def reset(self):
         global yaw_car
@@ -53,10 +53,9 @@ class DeepracerGym(gym.Env):
             print('Simulation reset')
         except rospy.ServiceException as exc:
             print("Reset Service did not process request: " + str(exc))
-        pose_deepracer = np.array([pos[0],pos[1],yaw_car])
-
-
-        return [pose_deepracer,self.lidar_ranges_]
+        pose_deepracer = np.array([pos[0],pos[1],yaw_car],dtype=np.float32)        
+        
+        return (pose_deepracer,self.lidar_ranges_)
 
     def step(self,action):
         global yaw_car
@@ -69,24 +68,24 @@ class DeepracerGym(gym.Env):
         msg.drive.steering_angle = action[1]
         x_pub.publish(msg)
         reward = 0
-        done = 0
+        done = False
         if(abs(pos[0]-self.target_point_[0])<THRESHOLD_DISTANCE_2_GOAL and  abs(pos[1]-self.target_point_[1])<THRESHOLD_DISTANCE_2_GOAL):
             reward = 1000
-            done = 1
+            done = True
         print(self.lidar_ranges_)
         self.lidar_ranges_ = np.array(lidar_range_values)
         print(self.lidar_ranges_)
         
         if(min(self.lidar_ranges_)<0.4):
             reward = -1000
-            done = 0
+            done = False
             print('Simulation reset because of collission')
         
         pose_deepracer = np.array([pos[0],pos[1],yaw_car])
 
         info = {}
 
-        return [pose_deepracer,self.lidar_ranges_],reward,done,info
+        return (pose_deepracer,self.lidar_ranges_),reward,done,info
         
     
     def render(self):
@@ -191,7 +190,7 @@ def get_vehicle_state(data):
     yaw = euler[2]
     yaw_car = yaw
     velocity = get_current_velocity(old_pos[0],old_pos[1],pos[0],pos[1])
-    print(pos[0],pos[1],yaw)
+    # print(pos[0],pos[1],yaw)
     #print('velocity = ',velocity)
     #old_pos[0] = pos[0]
     #old_pos[1] = pos[1]
@@ -223,7 +222,7 @@ def get_lidar_data(data):
     #print(type(data.ranges))
     i = 1+1
     global lidar_range_values
-    lidar_range_values = np.array(data.ranges)
+    lidar_range_values = np.array(data.ranges,dtype=np.float32)
     #print(lidar_range_values)
 
 
@@ -237,13 +236,17 @@ def start():
     x_sub1 = rospy.Subscriber("/move_base_simple/goal",PoseStamped,get_clicked_point)
     x_sub2 = rospy.Subscriber("/scan",LaserScan,get_lidar_data)
     env =  DeepracerGym()
+
     while not rospy.is_shutdown():
         time.sleep(1)
+        print('-------',check_env(env))
+        
+        # break
         #obs = env.reset()
-        action = np.array([5,1.2])
-        x, reward, done, info = env.step(action)
-        print(x[0][0])
-        print(reward)
+        # action = np.array([5,1.2])
+        # x, reward, done, info = env.step(action)
+        # print(x[0][0])
+        # print(reward)
 
         """
 

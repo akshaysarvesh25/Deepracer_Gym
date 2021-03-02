@@ -36,7 +36,7 @@
   <world>
   <gui>
     <camera name="user_camera">
-      <pose>x y z roll pitch yaw</pose>
+      <pose>-3 -9 26 0 1.57 0</pose>
     </camera>
   </gui>
 </world>

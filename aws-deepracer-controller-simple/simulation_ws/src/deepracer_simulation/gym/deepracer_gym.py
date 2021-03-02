@@ -53,7 +53,7 @@ parser.add_argument('--seed', type=int, default=123456, metavar='N',
 					help='random seed (default: 123456)')
 parser.add_argument('--batch_size', type=int, default=256, metavar='N',
 					help='batch size (default: 256)')
-parser.add_argument('--num_steps', type=int, default=1000001, metavar='N',
+parser.add_argument('--num_steps', type=int, default=1000000, metavar='N',
 					help='maximum number of steps (default: 1000000)')
 parser.add_argument('--hidden_size', type=int, default=256, metavar='N',
 					help='hidden size (default: 256)')
@@ -67,13 +67,9 @@ parser.add_argument('--replay_size', type=int, default=1000000, metavar='N',
 					help='size of replay buffer (default: 10000000)')
 parser.add_argument('--cuda', action="store_true",
 					help='run on CUDA (default: False)')
+parser.add_argument('--max_episode_length', type=int, default=2000, metavar='N',
+					help='max episode length (default: 2000)')
 args = parser.parse_args()
-
-
-
-
-
-
 
 x_pub = rospy.Publisher('/vesc/low_level/ackermann_cmd_mux/output',AckermannDriveStamped,queue_size=1)
 pos = [0,0]
@@ -126,9 +122,16 @@ class DeepracerGym(gym.Env):
 			print('Simulation reset')
 		except rospy.ServiceException as exc:
 			print("Reset Service did not process request: " + str(exc))
-		pose_deepracer = np.array([pos[0],pos[1],yaw_car],dtype=np.float32)        
+		pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]),yaw_car],dtype=np.float32) #relative pose
+
+		temp_lidar_values = np.nan_to_num(self.lidar_ranges_, copy=True, posinf=max_lidar_value)
+		temp_lidar_values = temp_lidar_values/max_lidar_value
+		return_state = np.concatenate((pose_deepracer,temp_lidar_values))
 		
-		return np.concatenate((pose_deepracer,self.lidar_ranges_))
+		if ((max(return_state) > 1.) or (min(return_state < -1.)) or (len(return_state) != 723)):
+			print('-----------------ERROR Reset----------------------')        
+		
+		return return_state
 	
 	def get_reward(self,x,y):
 		x_target = self.target_point_[0]
@@ -164,7 +167,7 @@ class DeepracerGym(gym.Env):
 				done = True
 				print('Collission')
 
-			pose_deepracer = np.array([pos[0],pos[1],yaw_car])
+			pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]),yaw_car],dtype=np.float32) #relative pose
 
 		else: 
 			done = True
@@ -172,13 +175,23 @@ class DeepracerGym(gym.Env):
 			reward = -1
 			temp_pos0 = min(max(pos[0],-1.),1.) #keeping it in [-1.,1.]
 			temp_pos1 = min(max(pos[1],-1.),1.) #keeping it in [-1.,1.]
-			pose_deepracer = np.array([temp_pos0, temp_pos1, yaw_car])       
+			pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]),yaw_car],dtype=np.float32) #relative pose       
 
 		info = {}
 
 		# print('--------------', reward)
+		
+		temp_lidar_values = np.nan_to_num(self.lidar_ranges_, copy=True, posinf=max_lidar_value)
+		temp_lidar_values = temp_lidar_values/max_lidar_value
 
-		return np.concatenate((pose_deepracer,self.lidar_ranges_)),reward,done,info     
+		return_state = np.concatenate((pose_deepracer,temp_lidar_values))
+		if ((max(return_state) > 1.) or (min(return_state < -1.)) or (len(return_state) != 723)):
+			print('-----------------ERROR Step----------------------')
+			print(max(pose_deepracer),max(temp_lidar_values))
+			print(min(pose_deepracer),min(temp_lidar_values))
+			print(len(return_state))
+			print('-------------------------------------------------')
+		return return_state,reward,done,info     
 
 	def stop_car(self):
 		global x_pub
@@ -317,6 +330,7 @@ def get_lidar_data(data):
 	#print(type(data.ranges))
 	# i = 1+1
 	global lidar_range_values
+	lidar_range_values = np.array(data.ranges,dtype=np.float32)
 	
 	# normalized_ranges = []
 	# for vals in data.ranges:
@@ -324,9 +338,7 @@ def get_lidar_data(data):
 	#     if(vals>=12.00):
 	#         normalized_ranges.append(1)
 
-	lidar_range_values = np.array(data.ranges,dtype=np.float32)
-	lidar_range_values = np.nan_to_num(lidar_range_values, copy=True, posinf=max_lidar_value)
-	lidar_range_values = lidar_range_values/max_lidar_value
+
 	# print(lidar_range_values)
 
 
@@ -339,7 +351,7 @@ def start():
 	x=rospy.Subscriber("/gazebo/model_states_drop",ModelStates,get_vehicle_state)
 	x_sub1 = rospy.Subscriber("/move_base_simple/goal",PoseStamped,get_clicked_point)
 	x_sub2 = rospy.Subscriber("/scan",LaserScan,get_lidar_data)
-	target_point = [0,0]
+	target_point = [-2,0]
 	env =  DeepracerGym(target_point)
 	'''
 	while not rospy.is_shutdown():
@@ -419,13 +431,13 @@ def start():
 				episode_steps += 1
 				total_numsteps += 1
 				episode_reward += reward
-				if episode_steps > 1000:
+				if episode_steps > args.max_episode_length:
 					done = True
 
 				# Ignore the "done" signal if it comes from hitting the time horizon.
 				# (https://github.com/openai/spinningup/blob/master/spinup/algos/sac/sac.py)
-				mask = 1 if episode_steps == 1000 else float(not done)
-				mask = float(not done)
+				mask = 1 if episode_steps == args.max_episode_length else float(not done)
+				# mask = float(not done)
 				memory.push(state, action, reward, next_state, mask) # Append transition to memory
 
 				state = next_state
@@ -436,12 +448,18 @@ def start():
 			writer.add_scalar('reward/train', episode_reward, i_episode)
 			print("Episode: {}, total numsteps: {}, episode steps: {}, reward: {}".format(i_episode, total_numsteps, episode_steps, round(episode_reward, 2)))
 
+		print('----------------------Training Ending----------------------')
+		return True
+
 
 		
 	rospy.spin()
 
 if __name__ == '__main__':
 	try:
-		start()
+		Flag = False
+		Flag = start()
+		if Flag:
+			print('----------_All Done-------------')
 	except rospy.ROSInterruptException:
 		pass

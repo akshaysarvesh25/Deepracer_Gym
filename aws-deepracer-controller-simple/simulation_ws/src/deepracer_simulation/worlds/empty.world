@@ -32,6 +32,14 @@
        <direction>0 0 -1</direction>
        <cast_shadows>false</cast_shadows>
   </light>
+  
+  <world>
+  <gui>
+    <camera name="user_camera">
+      <pose>x y z roll pitch yaw</pose>
+    </camera>
+  </gui>
+</world>
 
 </world>
 </sdf>

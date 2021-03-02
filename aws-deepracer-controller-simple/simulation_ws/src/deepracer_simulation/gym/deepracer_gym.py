@@ -98,7 +98,7 @@ class DeepracerGym(gym.Env):
 		n_actions = 2 #velocity,steering
 		metadata = {'render.modes': ['console']}
 		#self.action_space = spaces.Discrete(n_actions)
-		self.action_space = spaces.Box(np.array([-0.9, -0.9]), np.array([0.9, 0.9]), dtype = np.float32)
+		self.action_space = spaces.Box(np.array([-1., -1.]), np.array([1., 1.]), dtype = np.float32)
 		# self.pose_observation_space = spaces.Box(np.array([-1. , -1., -1.]),np.array([1., 1., 1.]),dtype = np.float32)
 		# self.lidar_observation_space = spaces.Box(0,1.,shape=(720,),dtype = np.float32)
 		# self.observation_space = spaces.Tuple((self.pose_observation_space,self.lidar_observation_space))

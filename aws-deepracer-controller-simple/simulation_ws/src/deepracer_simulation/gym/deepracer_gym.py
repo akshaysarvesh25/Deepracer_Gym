@@ -197,12 +197,14 @@ class DeepracerGym(gym.Env):
 
 
 		return_state = np.concatenate((pose_deepracer,temp_lidar_values))
-		if ((max(return_state) > 1.) or (min(return_state < -1.)) or (len(return_state) != 723)):
-			print('-----------------ERROR Step----------------------')
-			print(max(pose_deepracer),max(temp_lidar_values))
-			print(min(pose_deepracer),min(temp_lidar_values))
-			print(len(return_state))
-			print('-------------------------------------------------')
+		
+		# if ((max(return_state) > 1.) or (min(return_state < -1.)) or (len(return_state) != 723)):
+		# 	print('-----------------ERROR Step----------------------')
+		# 	print(max(pose_deepracer),max(temp_lidar_values))
+		# 	print(min(pose_deepracer),min(temp_lidar_values))
+		# 	print(len(return_state))
+		# 	print('-------------------------------------------------')
+
 		return return_state,reward,done,info     
 
 	def stop_car(self):

@@ -4,7 +4,7 @@
   <arg name="gui" default="true" />
 
   <include file="$(find gazebo_ros)/launch/empty_world.launch">
-    <arg name="world_name" value="worlds/willowgarage.world"/>
+    <arg name="world_name" value="$(find deepracer_simulation)/worlds/willowgarage.world"/>
     <arg name="gui" value="$(arg gui)"/>
   </include>
 
@@ -12,7 +12,7 @@
   <param name="robot_description" command="$(find xacro)/xacro '$(find deepracer_simulation)/urdf/racecar.xacro'" />
 
   <!-- push robot_description to factory and spawn robot in gazebo -->
-  <node name="racecar_spawn" pkg="gazebo_ros" type="spawn_model" output="screen" args="-urdf -param robot_description -model racecar -z 0.05" />
+  <node name="racecar_spawn" pkg="gazebo_ros" type="spawn_model" output="screen" args="-urdf -param robot_description -model racecar -z 0.05 -x -5" />
 
   <!-- ros_control racecar launch file -->
   <include file="$(find deepracer_simulation)/launch/racecar_control.launch" ns="/"/>

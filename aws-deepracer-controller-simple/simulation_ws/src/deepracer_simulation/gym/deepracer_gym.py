@@ -67,8 +67,8 @@ parser.add_argument('--replay_size', type=int, default=1000000, metavar='N',
 					help='size of replay buffer (default: 10000000)')
 parser.add_argument('--cuda', action="store_true",
 					help='run on CUDA (default: False)')
-parser.add_argument('--max_episode_length', type=int, default=2000, metavar='N',
-					help='max episode length (default: 2000)')
+parser.add_argument('--max_episode_length', type=int, default=3000, metavar='N',
+					help='max episode length (default: 3000)')
 args = parser.parse_args()
 
 x_pub = rospy.Publisher('/vesc/low_level/ackermann_cmd_mux/output',AckermannDriveStamped,queue_size=1)
@@ -98,14 +98,15 @@ class DeepracerGym(gym.Env):
 		# self.pose_observation_space = spaces.Box(np.array([-1. , -1., -1.]),np.array([1., 1., 1.]),dtype = np.float32)
 		# self.lidar_observation_space = spaces.Box(0,1.,shape=(720,),dtype = np.float32)
 		# self.observation_space = spaces.Tuple((self.pose_observation_space,self.lidar_observation_space))
-		low = np.concatenate((np.array([-1.,-1.,-1.]),np.zeros(720)))
-		high = np.ones(723)
+		low = np.concatenate((np.array([-1.,-1.,-4.]),np.zeros(720)))
+		high = np.concatenate((np.array([1.,1.,4.]),np.zeros(720)))
 		self.observation_space = spaces.Box(low,high,dtype=np.float32)
 		self.pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
 		self.unpause = rospy.ServiceProxy('/gazebo/unpause_physics', Empty)
 		self.reset_simulation_proxy = rospy.ServiceProxy('/gazebo/reset_simulation', Empty)
 		self.target_point_ = np.array([target_point[0]/MAX_X,target_point[1]/MAX_Y])
-		self.lidar_ranges_ = np.zeros(720)
+		#self.lidar_ranges_ = np.zeros(720)
+		self.temp_lidar_values_old = np.zeros(720)
 	
 	def reset(self):        
 		global yaw_car
@@ -122,9 +123,12 @@ class DeepracerGym(gym.Env):
 			print('Simulation reset')
 		except rospy.ServiceException as exc:
 			print("Reset Service did not process request: " + str(exc))
-		pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]),yaw_car],dtype=np.float32) #relative pose
 
-		temp_lidar_values = np.nan_to_num(self.lidar_ranges_, copy=True, posinf=max_lidar_value)
+		head = math.atan((self.target_point_[1]-pos[1])/(self.target_point_[0]-pos[0]+0.01))
+
+		pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]), abs(head - yaw_car)],dtype=np.float32) #relative pose and yaw
+
+		temp_lidar_values = np.nan_to_num(np.array(lidar_range_values), copy=True, posinf=max_lidar_value)
 		temp_lidar_values = temp_lidar_values/max_lidar_value
 		return_state = np.concatenate((pose_deepracer,temp_lidar_values))
 		
@@ -136,38 +140,44 @@ class DeepracerGym(gym.Env):
 	def get_reward(self,x,y):
 		x_target = self.target_point_[0]
 		y_target = self.target_point_[1]
-		return max(-1, -1*np.sqrt((x - x_target)**2 + (y - y_target)**2)) # reward is -1*distance to target, limited to [-1,0]
+		return -1*(abs(x - x_target) + abs(y - y_target)) # reward is -1*distance to target, limited to [-1,0]
 
 	def step(self,action):
 		global yaw_car
-		# print('Taking action ')
-		# print('Changing velocity to : ',action[0],' m/s')
-		# print('Changing steering angle to : ',action[1],' radians')
+		# self.lidar_ranges_ = np.array(lidar_range_values)
+		self.temp_lidar_values_old = np.nan_to_num(np.array(lidar_range_values), copy=True, posinf=max_lidar_value)
+		self.temp_lidar_values_old = self.temp_lidar_values_old/max_lidar_value
+
 		global x_pub
 		msg = AckermannDriveStamped()
 		msg.drive.speed = action[0]*MAX_VEL
 		msg.drive.steering_angle = action[1]*MAX_STEER
 		x_pub.publish(msg)
+
+
 		reward = 0
 		done = False
 
 
-
 		if((abs(pos[0]) < 1.) and (abs(pos[1]) < 1.) ):
-			reward = self.get_reward(pos[0],pos[1])
 
-			if(abs(pos[0]-self.target_point_[0])<THRESHOLD_DISTANCE_2_GOAL and  abs(pos[1]-self.target_point_[1])<THRESHOLD_DISTANCE_2_GOAL):
-				reward = 1            
-				done = True
-				print('Goal Reached')                
-		   
-			self.lidar_ranges_ = np.array(lidar_range_values)            
-			if(min(self.lidar_ranges_)<0.4/max_lidar_value):
-				reward = -1            
-				done = True
-				print('Collission')
+			if(min(self.temp_lidar_values_old)<0.4/max_lidar_value):
+				reward = -1 + self.get_reward(pos[0],pos[1])         
+				done = False
+				# print('Collission')
 
-			pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]),yaw_car],dtype=np.float32) #relative pose
+			
+			elif(abs(pos[0]-self.target_point_[0])<THRESHOLD_DISTANCE_2_GOAL and  abs(pos[1]-self.target_point_[1])<THRESHOLD_DISTANCE_2_GOAL):
+				reward = 10            
+				done = True
+				print('Goal Reached')
+
+			else:
+				reward = self.get_reward(pos[0],pos[1])
+
+			head = math.atan((self.target_point_[1]-pos[1])/(self.target_point_[0]-pos[0]+0.01))
+
+			pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]),abs(head - yaw_car)],dtype=np.float32) #relative pose and yaw
 
 		else: 
 			done = True
@@ -175,14 +185,16 @@ class DeepracerGym(gym.Env):
 			reward = -1
 			temp_pos0 = min(max(pos[0],-1.),1.) #keeping it in [-1.,1.]
 			temp_pos1 = min(max(pos[1],-1.),1.) #keeping it in [-1.,1.]
-			pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]),yaw_car],dtype=np.float32) #relative pose       
+
+			head = math.atan((self.target_point_[1]-pos[1])/(self.target_point_[0]-pos[0]+0.01))
+			pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]), abs(head - yaw_car)],dtype=np.float32) #relative pose and yaw   
 
 		info = {}
 
-		# print('--------------', reward)
-		
-		temp_lidar_values = np.nan_to_num(self.lidar_ranges_, copy=True, posinf=max_lidar_value)
+		# self.lidar_ranges_ = np.array(lidar_range_values)
+		temp_lidar_values = np.nan_to_num(np.array(lidar_range_values), copy=True, posinf=max_lidar_value)
 		temp_lidar_values = temp_lidar_values/max_lidar_value
+
 
 		return_state = np.concatenate((pose_deepracer,temp_lidar_values))
 		if ((max(return_state) > 1.) or (min(return_state < -1.)) or (len(return_state) != 723)):
@@ -296,7 +308,7 @@ def get_vehicle_state(data):
 	q = quaternion
 	euler =  euler_from_quaternion(q[0],q[1],q[2],q[3])
 	yaw = euler[2]
-	yaw_car = yaw/MAX_YAW
+	yaw_car = yaw
 	velocity = get_current_velocity(old_pos[0],old_pos[1],pos[0],pos[1])
 	# print(pos[0],pos[1],yaw)
 	#print('velocity = ',velocity)
@@ -331,7 +343,9 @@ def get_lidar_data(data):
 	# i = 1+1
 	global lidar_range_values
 	lidar_range_values = np.array(data.ranges,dtype=np.float32)
-	
+	# if len(lidar_range_values) < 720:
+	# 	lidar_range_values = np.zeros(720)
+
 	# normalized_ranges = []
 	# for vals in data.ranges:
 	#     normalized_ranges.append(vals/14)
@@ -361,31 +375,32 @@ def start():
 
 	
 	##
-	'''
-	max_time_step = 100000
-	max_eposide = 1000
-	e = 0
+	
+	# max_time_step = 100000
+	# max_eposide = 1000
+	# e = 0
+	# while not rospy.is_shutdown():
+	# 	time.sleep(1) #Do not remove this 
+	# 	state = env.reset()        
+	# 	while(e < max_eposide):
+	# 		e += 1  
+	# 		# state = env.reset()          
+	# 		for _ in range(max_time_step):
+	# 			action = np.array([0.5,0.1])
+	# 			n_state,reward,done,info = env.step(action)
+	# 			# print(reward)
+	# 			if done:
+	# 				state = env.reset()                   
+	# 				break
+	
+	# rospy.spin()
+
+	
+
+
 	while not rospy.is_shutdown():
 		time.sleep(1) #Do not remove this 
-		state = env.reset()        
-		while(e < max_eposide):
-			e += 1  
-			# state = env.reset()          
-			for _ in range(max_time_step):
-				action = np.array([0.1,0.0])
-				n_state,reward,done,info = env.step(action)
-				# print(reward)
-				if done:
-					state = env.reset()                   
-					break
-	
-	'''
-
-	
-
-
-	while not rospy.is_shutdown():
-		time.sleep(1) #Do not remove this       
+		state = env.reset() #Do not remove this 
 		torch.manual_seed(args.seed)
 		np.random.seed(args.seed)
 
@@ -398,6 +413,7 @@ def start():
 															 args.policy, "autotune" if args.automatic_entropy_tuning else ""))
 		total_numsteps = 0
 		updates = 0
+		num_goal_reached = 0
 
 		for i_episode in itertools.count(1):
 			episode_reward = 0
@@ -428,6 +444,9 @@ def start():
 						updates += 1
 
 				next_state, reward, done, _ = env.step(action) # Step
+				if reward > 9: #Count the number of times the goal is reached
+					num_goal_reached += 1
+
 				episode_steps += 1
 				total_numsteps += 1
 				episode_reward += reward
@@ -446,7 +465,10 @@ def start():
 				break
 
 			writer.add_scalar('reward/train', episode_reward, i_episode)
+			writer.add_scalar('reward/episode_length',episode_steps, i_episode)
+			writer.add_scalar('reward/num_goal_reached',num_goal_reached, i_episode)
 			print("Episode: {}, total numsteps: {}, episode steps: {}, reward: {}".format(i_episode, total_numsteps, episode_steps, round(episode_reward, 2)))
+			print("Number of Goals Reached: ",num_goal_reached)
 
 		print('----------------------Training Ending----------------------')
 		return True
@@ -454,6 +476,7 @@ def start():
 
 		
 	rospy.spin()
+	
 
 if __name__ == '__main__':
 	try:

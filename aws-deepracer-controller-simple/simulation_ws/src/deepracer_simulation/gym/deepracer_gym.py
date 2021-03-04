@@ -29,6 +29,7 @@ from sac import SAC
 # from torch.utils.tensorboard import SummaryWriter
 from replay_memory import ReplayMemory
 from torch.utils.tensorboard import SummaryWriter
+from IPython.display import display
 # from stable_baselines3 import SAC
 # from stable_baselines3.sac import MlpPolicy
 
@@ -65,7 +66,7 @@ parser.add_argument('--target_update_interval', type=int, default=1, metavar='N'
 					help='Value target update per no. of updates per step (default: 1)')
 parser.add_argument('--replay_size', type=int, default=1000000, metavar='N',
 					help='size of replay buffer (default: 10000000)')
-parser.add_argument('--cuda', action="store_true",
+parser.add_argument('--cuda',type=int, default=1, metavar='N',
 					help='run on CUDA (default: False)')
 parser.add_argument('--max_episode_length', type=int, default=3000, metavar='N',
 					help='max episode length (default: 3000)')
@@ -124,23 +125,22 @@ class DeepracerGym(gym.Env):
 		except rospy.ServiceException as exc:
 			print("Reset Service did not process request: " + str(exc))
 
-		head = math.atan((self.target_point_[1]-pos[1])/(self.target_point_[0]-pos[0]+0.01))
-
-		pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]), abs(head - yaw_car)],dtype=np.float32) #relative pose and yaw
+		pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]), yaw_car],dtype=np.float32) #relative pose 
 
 		temp_lidar_values = np.nan_to_num(np.array(lidar_range_values), copy=True, posinf=max_lidar_value)
 		temp_lidar_values = temp_lidar_values/max_lidar_value
 		return_state = np.concatenate((pose_deepracer,temp_lidar_values))
 		
-		if ((max(return_state) > 1.) or (min(return_state < -1.)) or (len(return_state) != 723)):
-			print('-----------------ERROR Reset----------------------')        
+		# if ((max(return_state) > 1.) or (min(return_state < -1.)) or (len(return_state) != 723)):
+		# 	print('-----------------ERROR Reset----------------------')        
 		
 		return return_state
 	
 	def get_reward(self,x,y):
 		x_target = self.target_point_[0]
 		y_target = self.target_point_[1]
-		return -1*(abs(x - x_target) + abs(y - y_target)) # reward is -1*distance to target, limited to [-1,0]
+		head = math.atan((self.target_point_[1]-y)/(self.target_point_[0]-x+0.01))
+		return -1*(abs(x - x_target) + abs(y - y_target) + abs (head - yaw_car)) # reward is -1*distance to target, limited to [-1,0]
 
 	def step(self,action):
 		global yaw_car
@@ -152,12 +152,11 @@ class DeepracerGym(gym.Env):
 		msg = AckermannDriveStamped()
 		msg.drive.speed = action[0]*MAX_VEL
 		msg.drive.steering_angle = action[1]*MAX_STEER
+		# msg.drive.steer = action[1]*MAX_STEER
 		x_pub.publish(msg)
-
 
 		reward = 0
 		done = False
-
 
 		if((abs(pos[0]) < 1.) and (abs(pos[1]) < 1.) ):
 
@@ -175,9 +174,7 @@ class DeepracerGym(gym.Env):
 			else:
 				reward = self.get_reward(pos[0],pos[1])
 
-			head = math.atan((self.target_point_[1]-pos[1])/(self.target_point_[0]-pos[0]+0.01))
-
-			pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]),abs(head - yaw_car)],dtype=np.float32) #relative pose and yaw
+			pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]), yaw_car],dtype=np.float32) #relative pose
 
 		else: 
 			done = True
@@ -186,8 +183,8 @@ class DeepracerGym(gym.Env):
 			temp_pos0 = min(max(pos[0],-1.),1.) #keeping it in [-1.,1.]
 			temp_pos1 = min(max(pos[1],-1.),1.) #keeping it in [-1.,1.]
 
-			head = math.atan((self.target_point_[1]-pos[1])/(self.target_point_[0]-pos[0]+0.01))
-			pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]), abs(head - yaw_car)],dtype=np.float32) #relative pose and yaw   
+			head = math.atan((self.target_point_[1]-pos[1])/(self.target_point_[0]-pos[0]+0.01)) #calculate pose to target dierction
+			pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]), yaw_car],dtype=np.float32) #relative pose 
 
 		info = {}
 
@@ -201,7 +198,7 @@ class DeepracerGym(gym.Env):
 		# if ((max(return_state) > 1.) or (min(return_state < -1.)) or (len(return_state) != 723)):
 		# 	print('-----------------ERROR Step----------------------')
 		# 	print(max(pose_deepracer),max(temp_lidar_values))
-		# 	print(min(pose_deepracer),min(temp_lidar_values))
+		# 	print(min(pose_dseepracer),min(temp_lidar_values))
 		# 	print(len(return_state))
 		# 	print('-------------------------------------------------')
 
@@ -327,9 +324,6 @@ def get_vehicle_state(data):
 
 	#x,y,theta = update_vehicle_predicted_state(pos[0],pos[1],yaw)
 	#print('x,y,phi',x,y,theta)
-
-
-
 	#print(pointX,pointY)
 
 
@@ -375,25 +369,27 @@ def start():
 		print('---------------------------',check_env(env))
 	'''
 
-	
-	##
-	
-	# max_time_step = 100000
-	# max_eposide = 1000
+	# max_time_step = 3000
+	# max_eposide = 1
 	# e = 0
 	# while not rospy.is_shutdown():
 	# 	time.sleep(1) #Do not remove this 
-	# 	state = env.reset()        
+	# 	state = env.reset()
+	# 	env.stop_car()
+	# 	time.sleep(1)        
 	# 	while(e < max_eposide):
 	# 		e += 1  
 	# 		# state = env.reset()          
 	# 		for _ in range(max_time_step):
-	# 			action = np.array([0.5,0.1])
+	# 			action = np.array([0.1,-1])
 	# 			n_state,reward,done,info = env.step(action)
-	# 			# print(reward)
+	# 			# display(n_state[2])
+	# 			time.sleep(0.01)
+	# 			print(n_state[2],end='\r')
 	# 			if done:
 	# 				state = env.reset()                   
 	# 				break
+	# 	return True
 	
 	# rospy.spin()
 
@@ -423,10 +419,8 @@ def start():
 			done = False
 			state = env.reset()
 			
-
-
 			while not done:
-				
+				start_time = time.time()
 				if args.start_steps > total_numsteps:
 					action = env.action_space.sample()  # Sample random action
 				else:
@@ -446,8 +440,9 @@ def start():
 						updates += 1
 
 				next_state, reward, done, _ = env.step(action) # Step
-				if reward > 9: #Count the number of times the goal is reached
-					num_goal_reached += 1
+				print("Step Time: ",time.time()-start_time,end='\r')
+				if (reward > 9) and (episode_steps > 1): #Count the number of times the goal is reached
+					num_goal_reached += 1 
 
 				episode_steps += 1
 				total_numsteps += 1
@@ -473,10 +468,11 @@ def start():
 			print("Number of Goals Reached: ",num_goal_reached)
 
 		print('----------------------Training Ending----------------------')
+		env.stop_car()
+
+		agent.save_model()
 		return True
 
-
-		
 	rospy.spin()
 	
 

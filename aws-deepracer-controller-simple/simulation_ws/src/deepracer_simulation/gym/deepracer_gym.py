@@ -54,7 +54,7 @@ parser.add_argument('--seed', type=int, default=123456, metavar='N',
 					help='random seed (default: 123456)')
 parser.add_argument('--batch_size', type=int, default=256, metavar='N',
 					help='batch size (default: 256)')
-parser.add_argument('--num_steps', type=int, default=1000000, metavar='N',
+parser.add_argument('--num_steps', type=int, default=5000000, metavar='N',
 					help='maximum number of steps (default: 1000000)')
 parser.add_argument('--hidden_size', type=int, default=256, metavar='N',
 					help='hidden size (default: 256)')
@@ -152,7 +152,6 @@ class DeepracerGym(gym.Env):
 		msg = AckermannDriveStamped()
 		msg.drive.speed = action[0]*MAX_VEL
 		msg.drive.steering_angle = action[1]*MAX_STEER
-		# msg.drive.steer = action[1]*MAX_STEER
 		x_pub.publish(msg)
 
 		reward = 0
@@ -393,11 +392,8 @@ def start():
 	
 	# rospy.spin()
 
-	
-
-
 	while not rospy.is_shutdown():
-		time.sleep(1) #Do not remove this 
+		rospy.sleep(1) #Do not remove this 
 		state = env.reset() #Do not remove this 
 		torch.manual_seed(args.seed)
 		np.random.seed(args.seed)
@@ -440,7 +436,7 @@ def start():
 						updates += 1
 
 				next_state, reward, done, _ = env.step(action) # Step
-				print("Step Time: ",time.time()-start_time,end='\r')
+				# print("Step Time: ",time.time()-start_time,end='\r')
 				if (reward > 9) and (episode_steps > 1): #Count the number of times the goal is reached
 					num_goal_reached += 1 
 
@@ -470,7 +466,7 @@ def start():
 		print('----------------------Training Ending----------------------')
 		env.stop_car()
 
-		agent.save_model()
+		agent.save_model(env)
 		return True
 
 	rospy.spin()

@@ -360,7 +360,7 @@ def start():
 	x=rospy.Subscriber("/gazebo/model_states_drop",ModelStates,get_vehicle_state)
 	x_sub1 = rospy.Subscriber("/move_base_simple/goal",PoseStamped,get_clicked_point)
 	x_sub2 = rospy.Subscriber("/scan",LaserScan,get_lidar_data)
-	target_point = [-2,0]
+	target_point = [10,-8.5]
 	env =  DeepracerGym(target_point)
 	'''
 	while not rospy.is_shutdown():

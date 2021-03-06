@@ -56,7 +56,7 @@ parser.add_argument('--seed', type=int, default=123456, metavar='N',
 					help='random seed (default: 123456)')
 parser.add_argument('--batch_size', type=int, default=256, metavar='N',
 					help='batch size (default: 256)')
-parser.add_argument('--num_steps', type=int, default=1000000, metavar='N',
+parser.add_argument('--num_steps', type=int, default=5000000, metavar='N',
 					help='maximum number of steps (default: 1000000)')
 parser.add_argument('--hidden_size', type=int, default=256, metavar='N',
 					help='hidden size (default: 256)')
@@ -361,7 +361,7 @@ def start():
 	x=rospy.Subscriber("/gazebo/model_states_drop",ModelStates,get_vehicle_state)
 	x_sub1 = rospy.Subscriber("/move_base_simple/goal",PoseStamped,get_clicked_point)
 	x_sub2 = rospy.Subscriber("/scan",LaserScan,get_lidar_data)
-	target_point = [-2, 0]
+	target_point = [2.5, -10]
 	env =  DeepracerGym(target_point)
 	'''
 	while not rospy.is_shutdown():
@@ -393,166 +393,171 @@ def start():
 	
 	# rospy.spin()
 
-	# while not rospy.is_shutdown():
-	# 	# Training Script
-	# 	rospy.sleep(1) #Do not remove this 
-	# 	state = env.reset() #Do not remove this 
-	# 	torch.manual_seed(args.seed)
-	# 	np.random.seed(args.seed)
-
-	# 	# Agent
-	# 	agent = SAC(env.observation_space.shape[0], env.action_space, args)
-	# 	# Memory
-	# 	memory = ReplayMemory(args.replay_size, args.seed)
-	# 	#Tesnorboard
-	# 	writer = SummaryWriter('runs/{}_SAC_{}_{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), 'DeepracerGym',
-	# 														 args.policy, "autotune" if args.automatic_entropy_tuning else ""))
-	# 	total_numsteps = 0
-	# 	updates = 0
-	# 	num_goal_reached = 0
-
-	# 	for i_episode in itertools.count(1):
-	# 		episode_reward = 0
-	# 		episode_steps = 0
-	# 		done = False
-	# 		state = env.reset()
-			
-	# 		while not done:
-	# 			start_time = time.time()
-	# 			if args.start_steps > total_numsteps:
-	# 				action = env.action_space.sample()  # Sample random action
-	# 			else:
-	# 				action = agent.select_action(state)  # Sample action from policy
-
-	# 			if len(memory) > args.batch_size:
-	# 				# Number of updates per step in environment
-	# 				for i in range(args.updates_per_step):
-	# 					# Update parameters of all the networks
-	# 					critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
-
-	# 					writer.add_scalar('loss/critic_1', critic_1_loss, updates)
-	# 					writer.add_scalar('loss/critic_2', critic_2_loss, updates)
-	# 					writer.add_scalar('loss/policy', policy_loss, updates)
-	# 					writer.add_scalar('loss/entropy_loss', ent_loss, updates)
-	# 					writer.add_scalar('entropy_temprature/alpha', alpha, updates)
-	# 					updates += 1
-
-	# 			next_state, reward, done, _ = env.step(action) # Step
-	# 			# print("Step Time: ",time.time()-start_time,end='\r')
-	# 			if (reward > 9) and (episode_steps > 1): #Count the number of times the goal is reached
-	# 				num_goal_reached += 1 
-
-	# 			episode_steps += 1
-	# 			total_numsteps += 1
-	# 			episode_reward += reward
-	# 			if episode_steps > args.max_episode_length:
-	# 				done = True
-
-	# 			# Ignore the "done" signal if it comes from hitting the time horizon.
-	# 			# (https://github.com/openai/spinningup/blob/master/spinup/algos/sac/sac.py)
-	# 			mask = 1 if episode_steps == args.max_episode_length else float(not done)
-	# 			# mask = float(not done)
-	# 			memory.push(state, action, reward, next_state, mask) # Append transition to memory
-
-	# 			state = next_state
-
-	# 		if total_numsteps > args.num_steps:
-	# 			break
-
-	# 		if (episode_steps > 1):
-	# 			writer.add_scalar('reward/train', episode_reward, i_episode)
-	# 			writer.add_scalar('reward/episode_length',episode_steps, i_episode)
-	# 			writer.add_scalar('reward/num_goal_reached',num_goal_reached, i_episode)
-
-	# 		print("Episode: {}, total numsteps: {}, episode steps: {}, reward: {}".format(i_episode, total_numsteps, episode_steps, round(episode_reward, 2)))
-	# 		print("Number of Goals Reached: ",num_goal_reached)
-
-	# 	print('----------------------Training Ending----------------------')
-	# 	env.stop_car()
-
-	# 	agent.save_model("corridor", suffix = "1")
-	# 	return True
-
-	# rospy.spin()
-
 	while not rospy.is_shutdown():
-		# Evaluation script
+		# Training Script
 		rospy.sleep(1) #Do not remove this 
 		state = env.reset() #Do not remove this 
 		torch.manual_seed(args.seed)
 		np.random.seed(args.seed)
 
-		# Trained Agent
+		agent = SAC(env.observation_space.shape[0], env.action_space, args)
+
+		#Pretrained Agent
 		actor_path = "models/sac_actor_<DeepracerGym instance>_"
 		critic_path = "models/sac_critic_<DeepracerGym instance>_"
-		agent = SAC(env.observation_space.shape[0], env.action_space, args)
 		agent.load_model(actor_path, critic_path)
-		# Memory
-		# memory = ReplayMemory(args.replay_size, args.seed)
 
+		# Memory
+		memory = ReplayMemory(args.replay_size, args.seed)
 		#Tesnorboard
 		writer = SummaryWriter('runs/{}_SAC_{}_{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), 'DeepracerGym',
 															 args.policy, "autotune" if args.automatic_entropy_tuning else ""))
-		
-		updates = 0		
-		episode_reward = 0
-		episode_steps = 0
-		done = False
-		state = env.reset()
-		total_numsteps = 1000000
+		total_numsteps = 0
+		updates = 0
 		num_goal_reached = 0
 
-		while not done and (episode_steps < 3000):
-			# start_time = time.time()
-			if args.start_steps > total_numsteps:
-				action = env.action_space.sample()  # Sample random action
-			else:
-				action = agent.select_action(state)  # Sample action from policy
-			time.sleep(0.01) # Added delay to make up fo network delay during training
+		for i_episode in itertools.count(1):
+			episode_reward = 0
+			episode_steps = 0
+			done = False
+			state = env.reset()
+			
+			while not done:
+				start_time = time.time()
+				if args.start_steps > total_numsteps:
+					action = env.action_space.sample()  # Sample random action
+				else:
+					action = agent.select_action(state)  # Sample action from policy
 
-			# if len(memory) > args.batch_size:
-			# 	# Number of updates per step in environment
-			# 	for i in range(args.updates_per_step):
-			# 		# Update parameters of all the networks
-			# 		critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
+				if len(memory) > args.batch_size:
+					# Number of updates per step in environment
+					for i in range(args.updates_per_step):
+						# Update parameters of all the networks
+						critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
 
-			# 		writer.add_scalar('loss/critic_1', critic_1_loss, updates)
-			# 		writer.add_scalar('loss/critic_2', critic_2_loss, updates)
-			# 		writer.add_scalar('loss/policy', policy_loss, updates)
-			# 		writer.add_scalar('loss/entropy_loss', ent_loss, updates)
-			# 		writer.add_scalar('entropy_temprature/alpha', alpha, updates)
-			# 		updates += 1
+						writer.add_scalar('loss/critic_1', critic_1_loss, updates)
+						writer.add_scalar('loss/critic_2', critic_2_loss, updates)
+						writer.add_scalar('loss/policy', policy_loss, updates)
+						writer.add_scalar('loss/entropy_loss', ent_loss, updates)
+						writer.add_scalar('entropy_temprature/alpha', alpha, updates)
+						updates += 1
 
-			next_state, reward, done, _ = env.step(action) # Step
-			# print("Step Time: ",time.time()-start_time,end='\r')
-			if (reward > 9) and (episode_steps > 1): #Count the number of times the goal is reached
-				num_goal_reached += 1 
+				next_state, reward, done, _ = env.step(action) # Step
+				# print("Step Time: ",time.time()-start_time,end='\r')
+				if (reward > 9) and (episode_steps > 1): #Count the number of times the goal is reached
+					num_goal_reached += 1 
 
-			episode_steps += 1
-			episode_reward += reward
-			# if episode_steps > args.max_episode_length:
-			# 	done = True
+				episode_steps += 1
+				total_numsteps += 1
+				episode_reward += reward
+				if episode_steps > args.max_episode_length:
+					done = True
 
-			# Ignore the "done" signal if it comes from hitting the time horizon.
-			# (https://github.com/openai/spinningup/blob/master/spinup/algos/sac/sac.py)
-			mask = 1 if episode_steps == args.max_episode_length else float(not done)
-			# mask = float(not done)
-			# memory.push(state, action, reward, next_state, mask) # Append transition to memory
+				# Ignore the "done" signal if it comes from hitting the time horizon.
+				# (https://github.com/openai/spinningup/blob/master/spinup/algos/sac/sac.py)
+				mask = 1 if episode_steps == args.max_episode_length else float(not done)
+				# mask = float(not done)
+				memory.push(state, action, reward, next_state, mask) # Append transition to memory
 
-			state = next_state
+				state = next_state
 
-		# if (episode_steps > 1):
-		# 	writer.add_scalar('reward/evaluation', episode_reward, i_episode)
+			if total_numsteps > args.num_steps:
+				break
 
-		# print("Episode: {}, total numsteps: {}, episode steps: {}, reward: {}".format(i_episode, total_numsteps, episode_steps, round(episode_reward, 2)))
-		# print("Number of Goals Reached: ",num_goal_reached)
+			if (episode_steps > 1):
+				writer.add_scalar('reward/train', episode_reward, i_episode)
+				writer.add_scalar('reward/episode_length',episode_steps, i_episode)
+				writer.add_scalar('reward/num_goal_reached',num_goal_reached, i_episode)
 
-		print('----------------------Evaluation Ending----------------------')
+			print("Episode: {}, total numsteps: {}, episode steps: {}, reward: {}".format(i_episode, total_numsteps, episode_steps, round(episode_reward, 2)))
+			print("Number of Goals Reached: ",num_goal_reached)
+
+		print('----------------------Training Ending----------------------')
 		env.stop_car()
 
+		agent.save_model("corridor_turn", suffix = "1")
 		return True
 
 	rospy.spin()
+
+	# while not rospy.is_shutdown():
+	# 	# Evaluation script
+	# 	rospy.sleep(1) #Do not remove this 
+	# 	state = env.reset() #Do not remove this 
+	# 	torch.manual_seed(args.seed)
+	# 	np.random.seed(args.seed)
+
+	# 	# Trained Agent
+	# 	actor_path = "models/sac_actor_<DeepracerGym instance>_"
+	# 	critic_path = "models/sac_critic_<DeepracerGym instance>_"
+	# 	agent = SAC(env.observation_space.shape[0], env.action_space, args)
+	# 	agent.load_model(actor_path, critic_path)
+	# 	# Memory
+	# 	# memory = ReplayMemory(args.replay_size, args.seed)
+
+	# 	#Tesnorboard
+	# 	writer = SummaryWriter('runs/{}_SAC_{}_{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), 'DeepracerGym',
+	# 														 args.policy, "autotune" if args.automatic_entropy_tuning else ""))
+		
+	# 	updates = 0		
+	# 	episode_reward = 0
+	# 	episode_steps = 0
+	# 	done = False
+	# 	state = env.reset()
+	# 	total_numsteps = 1000000
+	# 	num_goal_reached = 0
+
+	# 	while not done and (episode_steps < 3000):
+	# 		# start_time = time.time()
+	# 		if args.start_steps > total_numsteps:
+	# 			action = env.action_space.sample()  # Sample random action
+	# 		else:
+	# 			action = agent.select_action(state)  # Sample action from policy
+	# 		time.sleep(0.01) # Added delay to make up fo network delay during training
+
+	# 		# if len(memory) > args.batch_size:
+	# 		# 	# Number of updates per step in environment
+	# 		# 	for i in range(args.updates_per_step):
+	# 		# 		# Update parameters of all the networks
+	# 		# 		critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
+
+	# 		# 		writer.add_scalar('loss/critic_1', critic_1_loss, updates)
+	# 		# 		writer.add_scalar('loss/critic_2', critic_2_loss, updates)
+	# 		# 		writer.add_scalar('loss/policy', policy_loss, updates)
+	# 		# 		writer.add_scalar('loss/entropy_loss', ent_loss, updates)
+	# 		# 		writer.add_scalar('entropy_temprature/alpha', alpha, updates)
+	# 		# 		updates += 1
+
+	# 		next_state, reward, done, _ = env.step(action) # Step
+	# 		# print("Step Time: ",time.time()-start_time,end='\r')
+	# 		if (reward > 9) and (episode_steps > 1): #Count the number of times the goal is reached
+	# 			num_goal_reached += 1 
+
+	# 		episode_steps += 1
+	# 		episode_reward += reward
+	# 		# if episode_steps > args.max_episode_length:
+	# 		# 	done = True
+
+	# 		# Ignore the "done" signal if it comes from hitting the time horizon.
+	# 		# (https://github.com/openai/spinningup/blob/master/spinup/algos/sac/sac.py)
+	# 		mask = 1 if episode_steps == args.max_episode_length else float(not done)
+	# 		# mask = float(not done)
+	# 		# memory.push(state, action, reward, next_state, mask) # Append transition to memory
+
+	# 		state = next_state
+
+	# 	# if (episode_steps > 1):
+	# 	# 	writer.add_scalar('reward/evaluation', episode_reward, i_episode)
+
+	# 	# print("Episode: {}, total numsteps: {}, episode steps: {}, reward: {}".format(i_episode, total_numsteps, episode_steps, round(episode_reward, 2)))
+	# 	# print("Number of Goals Reached: ",num_goal_reached)
+
+	# 	print('----------------------Evaluation Ending----------------------')
+	# 	env.stop_car()
+
+	# 	return True
+
+	# rospy.spin()
 	
 
 if __name__ == '__main__':

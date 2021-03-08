@@ -19,6 +19,8 @@ class SAC(object):
 
         # self.device = torch.device("cuda" if args.cuda else "cpu")
         self.device = torch.device("cuda:"+ str(args.cuda))
+        # self.device = torch.device("cpu")
+
         print(self.device)
         self.critic = QNetwork(num_inputs, action_space.shape[0], args.hidden_size).to(device=self.device)
         self.critic_optim = Adam(self.critic.parameters(), lr=args.lr)

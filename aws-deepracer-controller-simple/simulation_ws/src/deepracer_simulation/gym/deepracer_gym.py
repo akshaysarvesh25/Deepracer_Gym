@@ -31,7 +31,6 @@ from sac import SAC
 # from torch.utils.tensorboard import SummaryWriter
 from replay_memory import ReplayMemory
 from torch.utils.tensorboard import SummaryWriter
-from IPython.display import display
 # from stable_baselines3 import SAC
 # from stable_baselines3.sac import MlpPolicy
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*- 
 import rospy
 import time
 from std_msgs.msg import Bool
@@ -6,21 +7,14 @@ from std_msgs.msg import Float32
 from std_msgs.msg import Float64
 from ackermann_msgs.msg import AckermannDriveStamped
 from gazebo_msgs.msg import ModelStates
-#import tf
 from geometry_msgs.msg import PoseStamped
 from sensor_msgs.msg import LaserScan
-#from cvxpy import *
-#import cvxpy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 import math
 import gym
 from gym import spaces
 from std_srvs.srv import Empty
-
-# from stable_baselines.common.env_checker import check_env
-# from stable_baselines.td3.policies import MlpPolicy
-# from stable_baselines import SAC,TD3
 import argparse
 import datetime
 import itertools
@@ -28,13 +22,8 @@ import torch, gc
 gc.collect()
 
 from sac import SAC
-# from torch.utils.tensorboard import SummaryWriter
 from replay_memory import ReplayMemory
 from torch.utils.tensorboard import SummaryWriter
-from IPython.display import display
-# from stable_baselines3 import SAC
-# from stable_baselines3.sac import MlpPolicy
-
 
 parser = argparse.ArgumentParser(description='PyTorch Soft Actor-Critic Args')
 parser.add_argument('--policy', default="Gaussian",
@@ -56,7 +45,7 @@ parser.add_argument('--seed', type=int, default=123456, metavar='N',
 					help='random seed (default: 123456)')
 parser.add_argument('--batch_size', type=int, default=256, metavar='N',
 					help='batch size (default: 256)')
-parser.add_argument('--num_steps', type=int, default=5000000, metavar='N',
+parser.add_argument('--num_steps', type=int, default=1000000, metavar='N',
 					help='maximum number of steps (default: 1000000)')
 parser.add_argument('--hidden_size', type=int, default=256, metavar='N',
 					help='hidden size (default: 256)')
@@ -88,6 +77,7 @@ MAX_Y = 20
 max_lidar_value = 14
 # target_point = [target_x,target_y]
 THRESHOLD_DISTANCE_2_GOAL = 0.6/max(MAX_X,MAX_Y)
+UPDATE_EVERY = 5
 
 class DeepracerGym(gym.Env):
 
@@ -97,19 +87,19 @@ class DeepracerGym(gym.Env):
 		n_actions = 2 #velocity,steering
 		metadata = {'render.modes': ['console']}
 		#self.action_space = spaces.Discrete(n_actions)
-		self.action_space = spaces.Box(np.array([0., -1.]), np.array([1., 1.]), dtype = np.float32) # speed and steering
+		self.action_space = spaces.Box(np.array([-1., -1.]), np.array([1., 1.]), dtype = np.float32) # speed and steering
 		# self.pose_observation_space = spaces.Box(np.array([-1. , -1., -1.]),np.array([1., 1., 1.]),dtype = np.float32)
 		# self.lidar_observation_space = spaces.Box(0,1.,shape=(720,),dtype = np.float32)
 		# self.observation_space = spaces.Tuple((self.pose_observation_space,self.lidar_observation_space))
-		low = np.concatenate((np.array([-1.,-1.,-4.]),np.zeros(720)))
-		high = np.concatenate((np.array([1.,1.,4.]),np.zeros(720)))
+		low = np.concatenate((np.array([-1.,-1.,-4.]),np.zeros(360)))
+		high = np.concatenate((np.array([1.,1.,4.]),np.zeros(360)))
 		self.observation_space = spaces.Box(low,high,dtype=np.float32)
 		self.pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
 		self.unpause = rospy.ServiceProxy('/gazebo/unpause_physics', Empty)
 		self.reset_simulation_proxy = rospy.ServiceProxy('/gazebo/reset_simulation', Empty)
 		self.target_point_ = np.array([target_point[0]/MAX_X,target_point[1]/MAX_Y])
 		#self.lidar_ranges_ = np.zeros(720)
-		self.temp_lidar_values_old = np.zeros(720)
+		self.temp_lidar_values_old = np.zeros(360)
 	
 	def reset(self):        
 		global yaw_car
@@ -162,7 +152,7 @@ class DeepracerGym(gym.Env):
 		if((abs(pos[0]) < 1.) and (abs(pos[1]) < 1.) ):
 
 			if(min(self.temp_lidar_values_old)<0.4/max_lidar_value):
-				reward = -1         
+				reward = -1 + self.get_reward(pos[0],pos[1])   
 				done = False
 				# print('Collission')
 
@@ -361,7 +351,7 @@ def start():
 	x=rospy.Subscriber("/gazebo/model_states_drop",ModelStates,get_vehicle_state)
 	x_sub1 = rospy.Subscriber("/move_base_simple/goal",PoseStamped,get_clicked_point)
 	x_sub2 = rospy.Subscriber("/scan",LaserScan,get_lidar_data)
-	target_point = [2.5, -10]
+	target_point = [10, 8.5]
 	env =  DeepracerGym(target_point)
 	'''
 	while not rospy.is_shutdown():
@@ -403,9 +393,9 @@ def start():
 		agent = SAC(env.observation_space.shape[0], env.action_space, args)
 
 		#Pretrained Agent
-		actor_path = "models/sac_actor_<DeepracerGym instance>_"
-		critic_path = "models/sac_critic_<DeepracerGym instance>_"
-		agent.load_model(actor_path, critic_path)
+		# actor_path = "models/sac_actor_<DeepracerGym instance>_"
+		# critic_path = "models/sac_critic_<DeepracerGym instance>_"
+		# agent.load_model(actor_path, critic_path)
 
 		# Memory
 		memory = ReplayMemory(args.replay_size, args.seed)
@@ -428,19 +418,7 @@ def start():
 					action = env.action_space.sample()  # Sample random action
 				else:
 					action = agent.select_action(state)  # Sample action from policy
-
-				if len(memory) > args.batch_size:
-					# Number of updates per step in environment
-					for i in range(args.updates_per_step):
-						# Update parameters of all the networks
-						critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
-
-						writer.add_scalar('loss/critic_1', critic_1_loss, updates)
-						writer.add_scalar('loss/critic_2', critic_2_loss, updates)
-						writer.add_scalar('loss/policy', policy_loss, updates)
-						writer.add_scalar('loss/entropy_loss', ent_loss, updates)
-						writer.add_scalar('entropy_temprature/alpha', alpha, updates)
-						updates += 1
+				rospy.sleep(0.02)
 
 				next_state, reward, done, _ = env.step(action) # Step
 				# print("Step Time: ",time.time()-start_time,end='\r')
@@ -461,6 +439,20 @@ def start():
 
 				state = next_state
 
+			# if i_episode % UPDATE_EVERY == 0: 
+			if len(memory) > args.batch_size:
+				# Number of updates per step in environment
+				for i in range(args.updates_per_step*args.max_episode_length):
+					# Update parameters of all the networks
+					critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
+
+					writer.add_scalar('loss/critic_1', critic_1_loss, updates)
+					writer.add_scalar('loss/critic_2', critic_2_loss, updates)
+					writer.add_scalar('loss/policy', policy_loss, updates)
+					writer.add_scalar('loss/entropy_loss', ent_loss, updates)
+					writer.add_scalar('entropy_temprature/alpha', alpha, updates)
+					updates += 1
+
 			if total_numsteps > args.num_steps:
 				break
 
@@ -475,7 +467,7 @@ def start():
 		print('----------------------Training Ending----------------------')
 		env.stop_car()
 
-		agent.save_model("corridor_turn", suffix = "1")
+		agent.save_model("corridor_straight", suffix = "1")
 		return True
 
 	rospy.spin()
@@ -488,8 +480,8 @@ def start():
 	# 	np.random.seed(args.seed)
 
 	# 	# Trained Agent
-	# 	actor_path = "models/sac_actor_<DeepracerGym instance>_"
-	# 	critic_path = "models/sac_critic_<DeepracerGym instance>_"
+	# 	actor_path = "models/sac_actor_corridor_turn_1"
+	# 	critic_path = "models/sac_critic_corridor_turn_1"
 	# 	agent = SAC(env.observation_space.shape[0], env.action_space, args)
 	# 	agent.load_model(actor_path, critic_path)
 	# 	# Memory

@@ -19,6 +19,7 @@ import argparse
 import datetime
 import itertools
 import torch, gc
+import message_filters
 gc.collect()
 
 from sac import SAC
@@ -64,6 +65,9 @@ parser.add_argument('--max_episode_length', type=int, default=3000, metavar='N',
 args = parser.parse_args()
 
 x_pub = rospy.Publisher('/vesc/low_level/ackermann_cmd_mux/output',AckermannDriveStamped,queue_size=1)
+# pose_pub = rospy.Publisher('/pose_filtered', Float64MultiArray, queue_size=10)
+# lidar_pub = rospy.Publisher('/lidar_filtered',Float64MultiArray, queue_size=10)
+
 pos = [0,0]
 yaw_car = 0
 MAX_VEL = 10.
@@ -116,6 +120,8 @@ class DeepracerGym(gym.Env):
 			print('Simulation reset')
 		except rospy.ServiceException as exc:
 			print("Reset Service did not process request: " + str(exc))
+
+		print(pos)
 
 		pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]), yaw_car],dtype=np.float32) #relative pose 
 
@@ -231,35 +237,6 @@ class State:
 		self.yaw = yaw
 		self.predelta = None
 
-def get_clicked_point(data):
-	print("Clicked point : ",data)
-	"""
-	global target_point
-	target = [data.pose.position.x,data.pose.position.y]
-	target_point[0] = data.pose.position.x
-	target_point[1] = data.pose.position.y
-	print("Target Point : ",target_point)
-
-	point1 = [pos[0],pos[1]]
-	point2 = target_point
-	x,y = hanging_line_display(point1, point2)
-	#print(x,y)
-	global count
-	count = count+1
-
-	#x,y = discretize_points(x,y)
-	x = x[1::10]
-	y = y[1::10]
-
-	if(count<=DISPLAY_COUNT):
-		plt.plot(point1[0], point1[1], 'o')
-		plt.plot(point2[0], point2[1], 'o')
-		plt.plot(x,y,'.')
-		plt.show()
-	"""
-
-
-
 #https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
 def euler_from_quaternion(x, y, z, w):
 	"""
@@ -285,62 +262,50 @@ def euler_from_quaternion(x, y, z, w):
 
 def get_vehicle_state(data):
 	
-	global pos,velocity,old_pos
-	racecar_pose = data.pose[2]
-	pos[0] = racecar_pose.position.x/MAX_X
-	pos[1] = racecar_pose.position.y/MAX_Y
-	quaternion = (
-			data.pose[2].orientation.x,
-			data.pose[2].orientation.y,
-			data.pose[2].orientation.z,
-			data.pose[2].orientation.w)
-	#euler = tf.transformations.euler_from_quaternion(quaternion)
-	q = quaternion
-	euler =  euler_from_quaternion(q[0],q[1],q[2],q[3])
-	yaw = euler[2]
-	yaw_car = yaw
-	velocity = get_current_velocity(old_pos[0],old_pos[1],pos[0],pos[1])
-	# print(pos[0],pos[1],yaw)
-	#print('velocity = ',velocity)
-	#old_pos[0] = pos[0]
-	#old_pos[1] = pos[1]
-	#state = State(x=pos[0], y=pos[1], yaw=yaw)
-
-	#print("Car is at :",pos[0], pos[1], yaw)
-	#pointX,pointY = get_trajectory(pos[0],pos[1])
-	#print('Trajectory points : ',pointX,pointY)
-	#print('First target point : ',pointX[2],pointY[2])
-
-	#linear_mpc_control(pointX[2],pointY[2],pos[0],pos[1],yaw)
-
-	#x,y,theta = update_vehicle_predicted_state(pos[0],pos[1],yaw)
-	#print('x,y,phi',x,y,theta)
-	#print(pointX,pointY)
-
-
-
-
+	# global pos,velocity,old_pos
+	# racecar_pose = data.pose[2]
+	# pos[0] = racecar_pose.position.x/MAX_X
+	# pos[1] = racecar_pose.position.y/MAX_Y
+	# quaternion = (
+	# 		data.pose[2].orientation.x,
+	# 		data.pose[2].orientation.y,
+	# 		data.pose[2].orientation.z,
+	# 		data.pose[2].orientation.w)
+	# q = quaternion
+	# euler =  euler_from_quaternion(q[0],q[1],q[2],q[3])
+	# yaw = euler[2]
+	# yaw_car = yaw
+	# velocity = get_current_velocity(old_pos[0],old_pos[1],pos[0],pos[1])
+	pass
 
 def get_current_velocity(x_old,y_old,x_new,y_new):
 	vel = math.sqrt(pow((x_old-x_new),2)+pow((x_old-x_new),2))
 	return vel
 
 def get_lidar_data(data):
-	#print(type(data.ranges))
-	# i = 1+1
+	# global lidar_range_values
+	# lidar_range_values = np.array(data.ranges,dtype=np.float32)
+	pass
+
+def filtered_data(pose_data,lidar_data):
+	global pos,velocity,old_pos
+	racecar_pose = pose_data.pose[2]
+	pos[0] = racecar_pose.position.x/MAX_X
+	pos[1] = racecar_pose.position.y/MAX_Y
+	quaternion = (
+			pose_data.pose[2].orientation.x,
+			pose_data.pose[2].orientation.y,
+			pose_data.pose[2].orientation.z,
+			pose_data.pose[2].orientation.w)
+	q = quaternion
+	euler =  euler_from_quaternion(q[0],q[1],q[2],q[3])
+	yaw = euler[2]
+	yaw_car = yaw
+
 	global lidar_range_values
-	lidar_range_values = np.array(data.ranges,dtype=np.float32)
-	# if len(lidar_range_values) < 720:
-	# 	lidar_range_values = np.zeros(720)
+	lidar_range_values = np.array(lidar_data.ranges,dtype=np.float32)
 
-	# normalized_ranges = []
-	# for vals in data.ranges:
-	#     normalized_ranges.append(vals/14)
-	#     if(vals>=12.00):
-	#         normalized_ranges.append(1)
-	# print(lidar_range_values)
-
-
+	pass
 
 
 def start():
@@ -348,16 +313,19 @@ def start():
 
 	rospy.init_node('deepracer_controller_mpc', anonymous=True)
 	
-	x=rospy.Subscriber("/gazebo/model_states_drop",ModelStates,get_vehicle_state)
-	x_sub1 = rospy.Subscriber("/move_base_simple/goal",PoseStamped,get_clicked_point)
-	x_sub2 = rospy.Subscriber("/scan",LaserScan,get_lidar_data)
+	pose_sub2 = rospy.Subscriber("/gazebo/model_states_drop",ModelStates,get_vehicle_state)
+	# x_sub1 = rospy.Subscriber("/move_base_simple/goal",PoseStamped,get_clicked_point)
+	lidar_sub2 = rospy.Subscriber("/scan", LaserScan, get_lidar_data)
+	pose_sub = message_filters.Subscriber("/gazebo/model_states_drop", ModelStates)
+	lidar_sub = message_filters.Subscriber("/scan", LaserScan)
+	ts = message_filters.ApproximateTimeSynchronizer([pose_sub,lidar_sub],10,0.1,allow_headerless=True)
+	ts.registerCallback(filtered_data)
 	target_point = [10, 8.5]
 	env =  DeepracerGym(target_point)
-	'''
-	while not rospy.is_shutdown():
-		time.sleep(1)
-		print('---------------------------',check_env(env))
-	'''
+	
+	# while not rospy.is_shutdown():
+	# 	time.sleep(1)
+	# 	print('---------------------------',check_env(env))	
 
 	# max_time_step = 3000
 	# max_eposide = 1
@@ -407,6 +375,7 @@ def start():
 		num_goal_reached = 0
 
 		for i_episode in itertools.count(1):
+			# print("New episode")
 			episode_reward = 0
 			episode_steps = 0
 			done = False
@@ -421,45 +390,45 @@ def start():
 				rospy.sleep(0.02)
 
 				next_state, reward, done, _ = env.step(action) # Step
-				# print("Step Time: ",time.time()-start_time,end='\r')
-				if (reward > 9) and (episode_steps > 1): #Count the number of times the goal is reached
-					num_goal_reached += 1 
+				# if (reward > 9) and (episode_steps > 1): #Count the number of times the goal is reached
+				# 	num_goal_reached += 1 
 
-				episode_steps += 1
-				total_numsteps += 1
-				episode_reward += reward
+				# episode_steps += 1
+				# total_numsteps += 1
+				# episode_reward += reward
 				if episode_steps > args.max_episode_length:
 					done = True
 
-				# Ignore the "done" signal if it comes from hitting the time horizon.
-				# (https://github.com/openai/spinningup/blob/master/spinup/algos/sac/sac.py)
-				mask = 1 if episode_steps == args.max_episode_length else float(not done)
-				# mask = float(not done)
-				memory.push(state, action, reward, next_state, mask) # Append transition to memory
+				# # Ignore the "done" signal if it comes from hitting the time horizon.
+				# # (https://github.com/openai/spinningup/blob/master/spinup/algos/sac/sac.py)
+				# mask = 1 if episode_steps == args.max_episode_length else float(not done)
+				# # mask = float(not done)
+				# memory.push(state, action, reward, next_state, mask) # Append transition to memory
 
 				state = next_state
+				print(done)
 
-			# if i_episode % UPDATE_EVERY == 0: 
-			if len(memory) > args.batch_size:
-				# Number of updates per step in environment
-				for i in range(args.updates_per_step*args.max_episode_length):
-					# Update parameters of all the networks
-					critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
+			# # if i_episode % UPDATE_EVERY == 0: 
+			# if len(memory) > args.batch_size:
+			# 	# Number of updates per step in environment
+			# 	for i in range(args.updates_per_step*args.max_episode_length):
+			# 		# Update parameters of all the networks
+			# 		critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
 
-					writer.add_scalar('loss/critic_1', critic_1_loss, updates)
-					writer.add_scalar('loss/critic_2', critic_2_loss, updates)
-					writer.add_scalar('loss/policy', policy_loss, updates)
-					writer.add_scalar('loss/entropy_loss', ent_loss, updates)
-					writer.add_scalar('entropy_temprature/alpha', alpha, updates)
-					updates += 1
+			# 		writer.add_scalar('loss/critic_1', critic_1_loss, updates)
+			# 		writer.add_scalar('loss/critic_2', critic_2_loss, updates)
+			# 		writer.add_scalar('loss/policy', policy_loss, updates)
+			# 		writer.add_scalar('loss/entropy_loss', ent_loss, updates)
+			# 		writer.add_scalar('entropy_temprature/alpha', alpha, updates)
+			# 		updates += 1
 
-			if total_numsteps > args.num_steps:
-				break
+			# if total_numsteps > args.num_steps:
+			# 	break
 
-			if (episode_steps > 1):
-				writer.add_scalar('reward/train', episode_reward, i_episode)
-				writer.add_scalar('reward/episode_length',episode_steps, i_episode)
-				writer.add_scalar('reward/num_goal_reached',num_goal_reached, i_episode)
+			# if (episode_steps > 1):
+			# 	writer.add_scalar('reward/train', episode_reward, i_episode)
+			# 	writer.add_scalar('reward/episode_length',episode_steps, i_episode)
+			# 	writer.add_scalar('reward/num_goal_reached',num_goal_reached, i_episode)
 
 			print("Episode: {}, total numsteps: {}, episode steps: {}, reward: {}".format(i_episode, total_numsteps, episode_steps, round(episode_reward, 2)))
 			print("Number of Goals Reached: ",num_goal_reached)

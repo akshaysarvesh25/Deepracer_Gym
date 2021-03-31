@@ -65,8 +65,8 @@ parser.add_argument('--max_episode_length', type=int, default=3000, metavar='N',
 args = parser.parse_args()
 
 x_pub = rospy.Publisher('/vesc/low_level/ackermann_cmd_mux/output',AckermannDriveStamped,queue_size=1)
-# pose_pub = rospy.Publisher('/pose_filtered', Float64MultiArray, queue_size=10)
-# lidar_pub = rospy.Publisher('/lidar_filtered',Float64MultiArray, queue_size=10)
+pose_pub = rospy.Publisher('/pose_filtered', Float64MultiArray, queue_size=10)
+lidar_pub = rospy.Publisher('/lidar_filtered',Float64MultiArray, queue_size=10)
 
 pos = [0,0]
 yaw_car = 0
@@ -390,45 +390,45 @@ def start():
 				rospy.sleep(0.02)
 
 				next_state, reward, done, _ = env.step(action) # Step
-				# if (reward > 9) and (episode_steps > 1): #Count the number of times the goal is reached
-				# 	num_goal_reached += 1 
+				if (reward > 9) and (episode_steps > 1): #Count the number of times the goal is reached
+					num_goal_reached += 1 
 
-				# episode_steps += 1
-				# total_numsteps += 1
-				# episode_reward += reward
+				episode_steps += 1
+				total_numsteps += 1
+				episode_reward += reward
 				if episode_steps > args.max_episode_length:
 					done = True
 
-				# # Ignore the "done" signal if it comes from hitting the time horizon.
-				# # (https://github.com/openai/spinningup/blob/master/spinup/algos/sac/sac.py)
-				# mask = 1 if episode_steps == args.max_episode_length else float(not done)
-				# # mask = float(not done)
-				# memory.push(state, action, reward, next_state, mask) # Append transition to memory
+				# Ignore the "done" signal if it comes from hitting the time horizon.
+				# (https://github.com/openai/spinningup/blob/master/spinup/algos/sac/sac.py)
+				mask = 1 if episode_steps == args.max_episode_length else float(not done)
+				# mask = float(not done)
+				memory.push(state, action, reward, next_state, mask) # Append transition to memory
 
 				state = next_state
 				print(done)
 
-			# # if i_episode % UPDATE_EVERY == 0: 
-			# if len(memory) > args.batch_size:
-			# 	# Number of updates per step in environment
-			# 	for i in range(args.updates_per_step*args.max_episode_length):
-			# 		# Update parameters of all the networks
-			# 		critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
+			# if i_episode % UPDATE_EVERY == 0: 
+			if len(memory) > args.batch_size:
+				# Number of updates per step in environment
+				for i in range(args.updates_per_step*args.max_episode_length):
+					# Update parameters of all the networks
+					critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
 
-			# 		writer.add_scalar('loss/critic_1', critic_1_loss, updates)
-			# 		writer.add_scalar('loss/critic_2', critic_2_loss, updates)
-			# 		writer.add_scalar('loss/policy', policy_loss, updates)
-			# 		writer.add_scalar('loss/entropy_loss', ent_loss, updates)
-			# 		writer.add_scalar('entropy_temprature/alpha', alpha, updates)
-			# 		updates += 1
+					writer.add_scalar('loss/critic_1', critic_1_loss, updates)
+					writer.add_scalar('loss/critic_2', critic_2_loss, updates)
+					writer.add_scalar('loss/policy', policy_loss, updates)
+					writer.add_scalar('loss/entropy_loss', ent_loss, updates)
+					writer.add_scalar('entropy_temprature/alpha', alpha, updates)
+					updates += 1
 
-			# if total_numsteps > args.num_steps:
-			# 	break
+			if total_numsteps > args.num_steps:
+				break
 
-			# if (episode_steps > 1):
-			# 	writer.add_scalar('reward/train', episode_reward, i_episode)
-			# 	writer.add_scalar('reward/episode_length',episode_steps, i_episode)
-			# 	writer.add_scalar('reward/num_goal_reached',num_goal_reached, i_episode)
+			if (episode_steps > 1):
+				writer.add_scalar('reward/train', episode_reward, i_episode)
+				writer.add_scalar('reward/episode_length',episode_steps, i_episode)
+				writer.add_scalar('reward/num_goal_reached',num_goal_reached, i_episode)
 
 			print("Episode: {}, total numsteps: {}, episode steps: {}, reward: {}".format(i_episode, total_numsteps, episode_steps, round(episode_reward, 2)))
 			print("Number of Goals Reached: ",num_goal_reached)

@@ -58,7 +58,7 @@ parser.add_argument('--target_update_interval', type=int, default=1, metavar='N'
 					help='Value target update per no. of updates per step (default: 1)')
 parser.add_argument('--replay_size', type=int, default=1000000, metavar='N',
 					help='size of replay buffer (default: 10000000)')
-parser.add_argument('--cuda',type=int, default=0, metavar='N',
+parser.add_argument('--cuda',type=int, default=1, metavar='N',
 					help='run on CUDA (default: False)')
 parser.add_argument('--max_episode_length', type=int, default=3000, metavar='N',
 					help='max episode length (default: 3000)')
@@ -87,8 +87,6 @@ done = False
 episode_reward = 0
 episode_steps = 0
 memory = ReplayMemory(args.replay_size, args.seed)
-
-
 
 class DeepracerGym(gym.Env):
 
@@ -218,11 +216,16 @@ class DeepracerGym(gym.Env):
 
 	def close(self):
 		pass
+
 target_point = [10, 8.5]
 env =  DeepracerGym(target_point)
 writer = SummaryWriter('runs/{}_SAC_{}_{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), 'DeepracerGym',
 															 args.policy, "autotune" if args.automatic_entropy_tuning else ""))
-state = env.reset()
+agent = SAC(env.observation_space.shape[0], env.action_space, args)
+state = np.zeros(env.observation_space.shape[0])
+
+torch.manual_seed(args.seed)
+np.random.seed(args.seed)
 
 def network_update():
 	if len(memory) > args.batch_size:
@@ -267,23 +270,16 @@ def euler_from_quaternion(x, y, z, w):
 
 	return roll_x, pitch_y, yaw_z # in radians
 
-def get_vehicle_state(data):
-	pass
-
-def get_lidar_data(data):
-	pass
-
 def filtered_data(pose_data,lidar_data):
-	global pos,velocity,old_pos, total_numsteps, done, env, episode_steps, episode_reward, memory, state, ts
+	global pos,velocity,old_pos, total_numsteps, done, env, episode_steps, episode_reward, memory, state, ts, x_pub
 	racecar_pose = pose_data.pose[2]
 	pos[0] = racecar_pose.position.x/MAX_X
 	pos[1] = racecar_pose.position.y/MAX_Y
-	quaternion = (
+	q = (
 			pose_data.pose[2].orientation.x,
 			pose_data.pose[2].orientation.y,
 			pose_data.pose[2].orientation.z,
 			pose_data.pose[2].orientation.w)
-	q = quaternion
 	euler =  euler_from_quaternion(q[0],q[1],q[2],q[3])
 	yaw = euler[2]
 	yaw_car = yaw
@@ -301,9 +297,11 @@ def filtered_data(pose_data,lidar_data):
 			action = env.action_space.sample()  # Sample random action
 		else:
 			action = agent.select_action(state)  # Sample action from policy
-		rospy.sleep(0.02)
+
+		action = np.array([1.0, 0.])		
 
 		next_state, reward, done, _ = env.step(action) # Step
+		rospy.sleep(0.02)
 
 		if (reward > 9) and (episode_steps > 1): #Count the number of times the goal is reached
 			num_goal_reached += 1 
@@ -326,44 +324,20 @@ def filtered_data(pose_data,lidar_data):
 
 def start():
 	torch.cuda.empty_cache()
+	state = env.reset()
 
 	rospy.init_node('deepracer_gym', anonymous=True)
 	
-	pose_sub2 = rospy.Subscriber("/gazebo/model_states_drop",ModelStates,get_vehicle_state)
-	# x_sub1 = rospy.Subscriber("/move_base_simple/goal",PoseStamped,get_clicked_point)
-	lidar_sub2 = rospy.Subscriber("/scan", LaserScan, get_lidar_data)
 	pose_sub = message_filters.Subscriber("/gazebo/model_states_drop", ModelStates)
 	lidar_sub = message_filters.Subscriber("/scan", LaserScan)
-	ts = message_filters.ApproximateTimeSynchronizer([pose_sub,lidar_sub],10,0.1,allow_headerless=True)
+	ts = message_filters.ApproximateTimeSynchronizer([pose_sub,lidar_sub2],10,0.1,allow_headerless=True)
 	ts.registerCallback(filtered_data)
-	
-	env =  DeepracerGym(target_point)
 
-	while not rospy.is_shutdown():
-		rospy.sleep(1)
-		# state = env.reset() #Do not remove this 
-		torch.manual_seed(args.seed)
-		np.random.seed(args.seed)
-
-		agent = SAC(env.observation_space.shape[0], env.action_space, args)
-
-		#Pretrained Agent
-		# actor_path = "models/sac_actor_<DeepracerGym instance>_"
-		# critic_path = "models/sac_critic_<DeepracerGym instance>_"
-		# agent.load_model(actor_path, critic_path)
-
-		# Memory
-		# memory = ReplayMemory(args.replay_size, args.seed)
-		#Tesnorboard
-		
-
-	rospy.spin()
 
 if __name__ == '__main__':
 	try:
 		Flag = False
 		Flag = start()
-
 		if Flag:
 			print('----------_All Done-------------')
 	except rospy.ROSInterruptException:

@@ -330,7 +330,7 @@ def start():
 	
 	pose_sub = message_filters.Subscriber("/gazebo/model_states_drop", ModelStates)
 	lidar_sub = message_filters.Subscriber("/scan", LaserScan)
-	ts = message_filters.ApproximateTimeSynchronizer([pose_sub,lidar_sub2],10,0.1,allow_headerless=True)
+	ts = message_filters.ApproximateTimeSynchronizer([pose_sub,lidar_sub],10,0.1,allow_headerless=True)
 	ts.registerCallback(filtered_data)
 
 

@@ -310,6 +310,10 @@ def filtered_data(pose_data,lidar_data):
 		episode_steps += 1
 		total_numsteps += 1
 		episode_reward += reward
+
+		if episode_steps > args.max_episode_length:
+			done = True
+
 		print(episode_steps, end = '\r')
 		# Ignore the "done" signal if it comes from hitting the time horizon.
 		# (https://github.com/openai/spinningup/blob/master/spinup/algos/sac/sac.py)

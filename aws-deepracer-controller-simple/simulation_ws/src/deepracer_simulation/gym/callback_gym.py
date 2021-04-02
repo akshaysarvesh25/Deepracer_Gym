@@ -130,7 +130,7 @@ class DeepracerGym(gym.Env):
 		pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]), yaw_car],dtype=np.float32) #relative pose 
 		temp_lidar_values = np.nan_to_num(np.array(lidar_range_values), copy=True, posinf=max_lidar_value)
 		temp_lidar_values = temp_lidar_values/max_lidar_value
-		temp_lidar_values = np.max(temp_lidar_values.reshape(-1,45), axis = 1)
+		temp_lidar_values = np.min(temp_lidar_values.reshape(-1,45), axis = 1)
 		return_state = np.concatenate((pose_deepracer,temp_lidar_values))
 		
 		# if ((max(return_state) > 1.) or (min(return_state < -1.)) or (len(return_state) != 723)):
@@ -149,7 +149,7 @@ class DeepracerGym(gym.Env):
 		# self.lidar_ranges_ = np.array(lidar_range_values)
 		self.temp_lidar_values_old = np.nan_to_num(np.array(lidar_range_values), copy=True, posinf=max_lidar_value)
 		self.temp_lidar_values_old = self.temp_lidar_values_old/max_lidar_value
-		self.temp_lidar_values_old = np.max(self.temp_lidar_values_old.reshape(-1,45), axis = 1)
+		self.temp_lidar_values_old = np.min(self.temp_lidar_values_old.reshape(-1,45), axis = 1)
 		print("Least distance to obstacle: ", min(self.temp_lidar_values_old), end = '\r')
 
 		global x_pub
@@ -194,7 +194,7 @@ class DeepracerGym(gym.Env):
 		
 		temp_lidar_values = np.nan_to_num(np.array(lidar_range_values), copy=True, posinf=max_lidar_value)
 		temp_lidar_values = temp_lidar_values/max_lidar_value
-		temp_lidar_values = np.max(temp_lidar_values.reshape(-1,45), axis = 1)
+		temp_lidar_values = np.min(temp_lidar_values.reshape(-1,45), axis = 1)
 
 		return_state = np.concatenate((pose_deepracer,temp_lidar_values))
 		# print("Reward : ", reward, end = '\r')
@@ -232,7 +232,7 @@ torch.manual_seed(args.seed)
 np.random.seed(args.seed)
 
 def network_update():
-	global updates
+	global updates, episode_reward, episode_steps, num_goal_reached, i_episode
 	if len(memory) > args.batch_size:
 		# Number of updates per step in environment
 		for i in range(args.updates_per_step*args.max_episode_length):
@@ -277,6 +277,7 @@ def euler_from_quaternion(x, y, z, w):
 
 def filtered_data(pose_data,lidar_data):
 	global pos,velocity,old_pos, total_numsteps, done, env, episode_steps, episode_reward, memory, state, ts, x_pub, num_goal_reached, i_episode
+	global updates, episode_reward, episode_steps, num_goal_reached, i_episode
 	racecar_pose = pose_data.pose[2]
 	pos[0] = racecar_pose.position.x/MAX_X
 	pos[1] = racecar_pose.position.y/MAX_Y

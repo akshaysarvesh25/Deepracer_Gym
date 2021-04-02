@@ -72,7 +72,7 @@ lidar_range_values = np.zeros(360)
 yaw_car = 0
 MAX_VEL = 1.0
 steer_precision = 0 # 1e-3
-MAX_STEER = (np.pi*0.25) - steer_precision
+MAX_STEER = (np.pi/6.0) - steer_precision
 MAX_YAW = 2*np.pi
 MAX_X = 20
 MAX_Y = 20
@@ -84,6 +84,7 @@ total_numsteps = 0
 updates = 0
 num_goal_reached = 0
 done = False
+i_episode = 1
 episode_reward = 0
 episode_steps = 0
 memory = ReplayMemory(args.replay_size, args.seed)
@@ -149,6 +150,7 @@ class DeepracerGym(gym.Env):
 		self.temp_lidar_values_old = np.nan_to_num(np.array(lidar_range_values), copy=True, posinf=max_lidar_value)
 		self.temp_lidar_values_old = self.temp_lidar_values_old/max_lidar_value
 		self.temp_lidar_values_old = np.max(self.temp_lidar_values_old.reshape(-1,45), axis = 1)
+		print("Least distance to obstacle: ", min(self.temp_lidar_values_old), end = '\r')
 
 		global x_pub
 		msg = AckermannDriveStamped()
@@ -161,7 +163,8 @@ class DeepracerGym(gym.Env):
 
 		if((abs(pos[0]) < 1.) and (abs(pos[1]) < 1.) ):
 
-			if(min(self.temp_lidar_values_old)<0.4/max_lidar_value):
+			if(min(self.temp_lidar_values_old)<0.04):
+				print("Crashed")
 				reward = -10   
 				done = True
 			
@@ -194,6 +197,7 @@ class DeepracerGym(gym.Env):
 		temp_lidar_values = np.max(temp_lidar_values.reshape(-1,45), axis = 1)
 
 		return_state = np.concatenate((pose_deepracer,temp_lidar_values))
+		# print("Reward : ", reward, end = '\r')
 		
 		# if ((max(return_state) > 1.) or (min(return_state < -1.)) or (len(return_state) != 723)):
 		# 	print('-----------------ERROR Step----------------------')
@@ -272,7 +276,7 @@ def euler_from_quaternion(x, y, z, w):
 	return roll_x, pitch_y, yaw_z # in radians
 
 def filtered_data(pose_data,lidar_data):
-	global pos,velocity,old_pos, total_numsteps, done, env, episode_steps, episode_reward, memory, state, ts, x_pub, num_goal_reached
+	global pos,velocity,old_pos, total_numsteps, done, env, episode_steps, episode_reward, memory, state, ts, x_pub, num_goal_reached, i_episode
 	racecar_pose = pose_data.pose[2]
 	pos[0] = racecar_pose.position.x/MAX_X
 	pos[1] = racecar_pose.position.y/MAX_Y
@@ -324,6 +328,7 @@ def filtered_data(pose_data,lidar_data):
 	else:
 		state = env.reset()
 		network_update()
+		i_episode += 1
 		episode_reward = 0
 		episode_steps = 0
 		done = False

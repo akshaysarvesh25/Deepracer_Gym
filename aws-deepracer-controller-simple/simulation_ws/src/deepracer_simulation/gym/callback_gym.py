@@ -295,8 +295,9 @@ def filtered_data(pose_data,lidar_data):
 
 	if total_numsteps > args.num_steps:
 		print('----------------------Training Ending----------------------')
-		env.stop_car()
+		env.stop_car()		
 		ts.unregister()
+		agent.save_model("corridor_straight", suffix = "2")
 
 	if not done:
 

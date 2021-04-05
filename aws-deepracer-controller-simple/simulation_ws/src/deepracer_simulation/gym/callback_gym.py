@@ -46,7 +46,7 @@ parser.add_argument('--seed', type=int, default=123456, metavar='N',
 					help='random seed (default: 123456)')
 parser.add_argument('--batch_size', type=int, default=256, metavar='N',
 					help='batch size (default: 256)')
-parser.add_argument('--num_steps', type=int, default=1000000, metavar='N',
+parser.add_argument('--num_steps', type=int, default=500000, metavar='N',
 					help='maximum number of steps (default: 1000000)')
 parser.add_argument('--hidden_size', type=int, default=256, metavar='N',
 					help='hidden size (default: 256)')
@@ -86,6 +86,7 @@ num_goal_reached = 0
 done = False
 i_episode = 1
 episode_reward = 0
+max_ep_reward = 0
 episode_steps = 0
 memory = ReplayMemory(args.replay_size, args.seed)
 
@@ -277,7 +278,7 @@ def euler_from_quaternion(x, y, z, w):
 
 def filtered_data(pose_data,lidar_data):
 	global pos,velocity,old_pos, total_numsteps, done, env, episode_steps, episode_reward, memory, state, ts, x_pub, num_goal_reached, i_episode
-	global updates, episode_reward, episode_steps, num_goal_reached, i_episode
+	global updates, episode_reward, episode_steps, num_goal_reached, i_episode, max_ep_reward
 	racecar_pose = pose_data.pose[2]
 	pos[0] = racecar_pose.position.x/MAX_X
 	pos[1] = racecar_pose.position.y/MAX_Y
@@ -296,9 +297,9 @@ def filtered_data(pose_data,lidar_data):
 
 	if total_numsteps > args.num_steps:
 		print('----------------------Training Ending----------------------')
-		env.stop_car()		
-		ts.unregister()
+		env.stop_car()			
 		agent.save_model("corridor_straight", suffix = "2")
+		ts.unregister()
 
 	if not done:
 
@@ -331,11 +332,16 @@ def filtered_data(pose_data,lidar_data):
 		state = env.reset()
 		network_update()
 		i_episode += 1
+		if episode_reward >= max_ep_reward:
+			max_ep_reward = episode_reward
+			print("Saving checkpoint model")
+			agent.save_model("checkpoint", suffix = "1")
 		episode_reward = 0
 		episode_steps = 0
 		done = False
 
 def start():
+	global ts
 	torch.cuda.empty_cache()	
 	rospy.init_node('deepracer_gym', anonymous=True)		
 	pose_sub = message_filters.Subscriber("/gazebo/model_states_drop", ModelStates)

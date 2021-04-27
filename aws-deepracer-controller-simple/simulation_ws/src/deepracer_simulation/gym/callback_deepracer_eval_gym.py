@@ -70,12 +70,12 @@ pos = [0,0]
 old_pos = [0,0]
 lidar_range_values = np.zeros(360)
 yaw_car = 0
-MAX_VEL = 1.0
+MAX_VEL = 1#1
 steer_precision = 0 # 1e-3
-MAX_STEER = (np.pi/6.0) - steer_precision
+MAX_STEER = (np.pi/3.0) - steer_precision
 MAX_YAW = 2*np.pi
-MAX_X = 20
-MAX_Y = 20
+MAX_X = 5
+MAX_Y = 5
 max_lidar_value = 14
 THRESHOLD_DISTANCE_2_GOAL =  0.1#0.6/max(MAX_X,MAX_Y)
 UPDATE_EVERY = 5
@@ -238,7 +238,7 @@ class DeepracerGym(gym.Env):
 
 
 target_point = [0., 0., 1.57]
-start_point = [-1,-1., 1.57]
+start_point = [-1,-1., 0]
 waypoints = [[0., 1., 1.57], [0., 2., 1.57],[1., 3., 1.57], [2., 4., 1.57], [3., 5., 1.57], [4., 6., 1.57], [4., 7., 1.57]]
 n_waypoints = 3 #look ahead waypoints
 env =  DeepracerGym(target_point,waypoints)
@@ -311,7 +311,8 @@ def pose_callback(pose_data):
 	euler =  euler_from_quaternion(q[0],q[1],q[2],q[3])
 	yaw = euler[2]
 	yaw_car = yaw
-
+	state = np.array([pos[0],pos[1],yaw])
+	print('State',state)
 	
 	action = agent.select_action(state)
 	next_state, reward, done, _ = env.step(action)

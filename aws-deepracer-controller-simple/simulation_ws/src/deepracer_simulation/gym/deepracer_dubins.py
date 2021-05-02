@@ -47,7 +47,7 @@ parser.add_argument('--seed', type=int, default=123456, metavar='N',
 					help='random seed (default: 123456)')
 parser.add_argument('--batch_size', type=int, default=512, metavar='N',
 					help='batch size (default: 256)')
-parser.add_argument('--num_steps', type=int, default=200000, metavar='N',
+parser.add_argument('--num_steps', type=int, default=500000, metavar='N',
 					help='maximum number of steps (default: 1000000)')
 parser.add_argument('--hidden_size', type=int, default=256, metavar='N',
 					help='hidden size (default: 256)')
@@ -190,10 +190,11 @@ class DeepracerGym(gym.Env):
 
 		if((abs(pos[0]) < 1.) and (abs(pos[1]) < 1.) ):
 
-			if(abs(pos[0]-self.target_point_[0])<THRESHOLD_DISTANCE_2_GOAL and  abs(pos[1]-self.target_point_[1])<THRESHOLD_DISTANCE_2_GOAL):
+			if(abs(pos[0]-self.target_point_[0])<THRESHOLD_DISTANCE_2_GOAL and abs(pos[1]-self.target_point_[1])<THRESHOLD_DISTANCE_2_GOAL):
 				reward = (args.max_episode_length-episode_steps)#10            
 				done = True
 				print('Goal Reached : ', self.target_point_)
+				print("x distance: {:.2f}, y distance : {:.2f}".format(abs(pos[0]-self.target_point_[0]), abs(pos[1]-self.target_point_[1])))
 
 			else:
 				reward = self.get_reward(pos[0],pos[1])
@@ -206,7 +207,7 @@ class DeepracerGym(gym.Env):
 			reward = -(args.max_episode_length-episode_steps)#-1
 			temp_pos0 = min(max(pos[0],-1.),1.) #keeping it in [-1.,1.]
 			temp_pos1 = min(max(pos[1],-1.),1.) #keeping it in [-1.,1.]
-
+			print("x distance: {:.2f}, y distance : {:.2f}".format(abs(pos[0]-self.target_point_[0]), abs(pos[1]-self.target_point_[1])))
 			head = math.atan((self.target_point_[1]-pos[1])/(self.target_point_[0]-pos[0]+0.01)) #calculate pose to target dierction
 			pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]), yaw_car],dtype=np.float32) #relative pose 
 
@@ -250,12 +251,11 @@ writer = SummaryWriter('runs/{}_SAC_{}_{}_{}'.format(datetime.datetime.now().str
 agent = SAC(env.observation_space.shape[0], env.action_space, args)
 state = np.zeros(env.observation_space.shape[0])
 
-'''
-actor_path = "models/sac_actor_checkpoint_1"
-critic_path = "models/sac_critic_checkpoint_1"
-agent = SAC(env.observation_space.shape[0], env.action_space, args) 
-agent.load_model(actor_path, critic_path) 
-'''
+
+# actor_path = "models/sac_actor_dubins_gazebo_1"
+# critic_path = "models/sac_critic_dubins_gazebo_1"
+# agent = SAC(env.observation_space.shape[0], env.action_space, args) 
+# agent.load_model(actor_path, critic_path) 
 
 torch.manual_seed(args.seed)
 np.random.seed(args.seed)
@@ -326,8 +326,8 @@ def pose_callback(pose_data):
 	if total_numsteps > args.num_steps:
 		print('----------------------Training Ending----------------------')
 		env.stop_car()			
-		agent.save_model("random_targets", suffix = "1")
-		ts.unregister()
+		agent.save_model("dubins_gazebo", suffix = "2")
+	
 
 	if not done:
 
@@ -337,7 +337,7 @@ def pose_callback(pose_data):
 			action = agent.select_action(state)  # Sample action from policy	
 
 		next_state, reward, done, _ = env.step(action) # Step
-		rospy.sleep(0.03)
+		time.sleep(0.05)
 
 		if (reward > 9) and (episode_steps > 1): #Count the number of times the goal is reached
 			num_goal_reached += 1 
@@ -348,6 +348,7 @@ def pose_callback(pose_data):
 
 		if episode_steps > args.max_episode_length:
 			done = True
+			print("x distance: {:.2f}, y distance : {:.2f}".format(abs(pos[0]-env.target_point_[0]), abs(pos[1]-env.target_point_[1])))
 
 		print(episode_steps, end = '\r')
 		# Ignore the "done" signal if it comes from hitting the time horizon.
@@ -371,14 +372,14 @@ def pose_callback(pose_data):
 		done = False
 
 def start():
-	global ts
+	global ts, state
 	torch.cuda.empty_cache()	
 	rospy.init_node('deepracer_gym', anonymous=True)		
 	pose_sub = rospy.Subscriber("/gazebo/model_states_drop", ModelStates, pose_callback)
 	# lidar_sub = message_filters.Subscriber("/scan", LaserScan)
 	# ts = message_filters.ApproximateTimeSynchronizer([pose_sub,lidar_sub],10,0.1,allow_headerless=True)
 	# ts.registerCallback(filtered_data)
-	#state = env.reset()
+	state = env.reset()
 	rospy.spin()
 
 if __name__ == '__main__':

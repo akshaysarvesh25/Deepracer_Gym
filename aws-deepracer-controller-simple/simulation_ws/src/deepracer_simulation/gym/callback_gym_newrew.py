@@ -131,7 +131,7 @@ class DeepracerGym(gym.Env):
 			print("Reset Service did not process request: " + str(exc))
 
 		head_to_target = self.get_heading(self.pose_deepracer, self.target_point_)
-		self.pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]), head_to_target - yaw_car],dtype=np.float32) #relative pose 
+		self.pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]), yaw_car - head_to_target],dtype=np.float32) #relative pose 
 		temp_lidar_values = np.nan_to_num(np.array(lidar_range_values), copy=True, posinf=max_lidar_value)
 		temp_lidar_values = temp_lidar_values/max_lidar_value
 		temp_lidar_values = np.min(temp_lidar_values.reshape(-1,45), axis = 1)
@@ -159,13 +159,13 @@ class DeepracerGym(gym.Env):
 		x_target = self.target_point_[0]
 		y_target = self.target_point_[1]
 		head_to_target = self.get_heading(self.pose_deepracer, self.target_point_)
-		self.pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]), head_to_target - yaw_car],dtype=np.float32)
+		self.pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]), yaw_car - head_to_target],dtype=np.float32)
 		# x = pose_deepracer[0]
 		# y = pose_deepracer[1]
 		alpha = head_to_target - yaw_car
 		ld = self.get_distance(self.pose_deepracer, self.target_point_)
 		crossTrackError = math.sin(alpha) *ld
-		return -1*(abs(crossTrackError)**2 + abs(x - x_target) + abs(y - y_target) + 3*abs (head_to_target - yaw_car)/1.57)/6 # reward is -1*distance to target, limited to [-1,0]
+		return -1*(abs(crossTrackError)**2 + abs(x - x_target) + abs(y - y_target) + 3*abs (yaw_car - head_to_target)/1.57)/6 # reward is -1*distance to target, limited to [-1,0]
 	
 	def get_reward1(self,x,y):
 		x_target = self.target_point_[0]
@@ -202,7 +202,7 @@ class DeepracerGym(gym.Env):
 				reward = self.get_reward(pos[0],pos[1])
 
 			head_to_target = self.get_heading(self.pose_deepracer, self.target_point_)
-			self.pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]), head_to_target - yaw_car],dtype=np.float32) #relative pose
+			self.pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]), yaw_car - head_to_target],dtype=np.float32) #relative pose
 
 		else: 
 			done = True
@@ -212,7 +212,7 @@ class DeepracerGym(gym.Env):
 			temp_pos1 = min(max(pos[1],-1.),1.) #keeping it in [-1.,1.]
 			print("x distance: {:.2f}, y distance : {:.2f}".format(abs(pos[0]-self.target_point_[0]), abs(pos[1]-self.target_point_[1])))
 			head_to_target = self.get_heading(self.pose_deepracer, self.target_point_) #calculate pose to target direction
-			self.pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]), head_to_target - yaw_car],dtype=np.float32) #relative pose 
+			self.pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]), yaw_car - head_to_target],dtype=np.float32) #relative pose 
 
 		info = {}
 

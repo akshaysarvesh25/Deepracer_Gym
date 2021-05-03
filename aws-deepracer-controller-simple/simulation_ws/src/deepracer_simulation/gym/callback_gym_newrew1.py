@@ -165,13 +165,13 @@ class DeepracerGym(gym.Env):
 		alpha = head_to_target - yaw_car
 		ld = self.get_distance(self.pose_deepracer, self.target_point_)
 		crossTrackError = math.sin(alpha) *ld
-		return -1*(abs(crossTrackError)**2 + abs(x - x_target) + abs(y - y_target) + 3*abs (head_to_target - yaw_car)/1.57)/6 # reward is -1*distance to target, limited to [-1,0]
+		return -1*(abs(crossTrackError)**2 + abs(x - x_target) + abs(y - y_target) + 3*abs (yaw_car - head_to_target)/1.57)/6 # reward is -1*distance to target, limited to [-1,0]
 	
 	def get_reward1(self,x,y):
 		x_target = self.target_point_[0]
 		y_target = self.target_point_[1]
 		head = math.atan((self.target_point_[1]-y)/(self.target_point_[0]-x+0.01))
-		return -(1/3)*(abs(x - x_target) + abs(y - y_target) + abs ((1/3.14)*(head - yaw_car))) # reward is -1*distance to target, limited to [-1,0]
+		return -(1/3)*(abs(x - x_target) + abs(y - y_target) + abs ((1/3.14)*(yaw_car - head_to_target))) # reward is -1*distance to target, limited to [-1,0]
 
 	def step(self,action):
 		global yaw_car, lidar_range_values

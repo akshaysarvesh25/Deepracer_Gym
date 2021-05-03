@@ -164,7 +164,7 @@ class DeepracerGym(gym.Env):
 		alpha = head_to_target - yaw_car
 		ld = self.get_distance(self.pose_deepracer, self.target_point_)
 		crossTrackError = math.sin(alpha) *ld
-		return -1*(abs(crossTrackError)**2 + abs(x - x_target) + abs(y - y_target) + 3*abs (head_to_target - yaw_car)/1.57)/6 # reward is -1*distance to target, limited to [-1,0]
+		return -1*(abs(crossTrackError)**2 + abs(x - x_target) + abs(y - y_target) + 3*abs (yaw_car - head_to_target)/1.57)/6 # reward is -1*distance to target, limited to [-1,0]
 	
 	def get_reward1(self,x,y):
 		x_target = self.target_point_[0]

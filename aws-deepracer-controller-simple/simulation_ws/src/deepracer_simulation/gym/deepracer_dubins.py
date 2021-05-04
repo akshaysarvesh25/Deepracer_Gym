@@ -103,18 +103,19 @@ class DeepracerGym(gym.Env):
 		# self.pose_observation_space = spaces.Box(np.array([-1. , -1., -1.]),np.array([1., 1., 1.]),dtype = np.float32)
 		# self.lidar_observation_space = spaces.Box(0,1.,shape=(720,),dtype = np.float32)
 		# self.observation_space = spaces.Tuple((self.pose_observation_space,self.lidar_observation_space))
-		low = np.concatenate((np.array([-1.,-1.,-4.]),np.zeros(8)))
-		high = np.concatenate((np.array([1.,1.,4.]),np.zeros(8)))
+		low = np.array([-1.,-1.,-4.])
+		high = np.array([1.,1.,4.])
 		self.observation_space = spaces.Box(low,high,dtype=np.float32)
 		self.pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
 		self.unpause = rospy.ServiceProxy('/gazebo/unpause_physics', Empty)
 		self.reset_simulation_proxy = rospy.ServiceProxy('/gazebo/reset_simulation', Empty)
 		self.target_point_ = np.array([0./MAX_X,0./MAX_Y])
+		self.pose_deepracer = np.zeros(3)
 		#self.lidar_ranges_ = np.zeros(720)
 		# self.temp_lidar_values_old = np.zeros(8)
 	
 	def reset(self):        
-		global yaw_car, lidar_range_values
+		global yaw_car
 		#time.sleep(1e-2)
 		self.stop_car()        
 		rospy.wait_for_service('/gazebo/reset_simulation')
@@ -129,13 +130,13 @@ class DeepracerGym(gym.Env):
 		except rospy.ServiceException as exc:
 			print("Reset Service did not process request: " + str(exc))
 
-		pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]), yaw_car],dtype=np.float32) #relative pose 
-		temp_lidar_values = np.nan_to_num(np.array(lidar_range_values), copy=True, posinf=max_lidar_value)
-		temp_lidar_values = temp_lidar_values/max_lidar_value
-		temp_lidar_values = np.min(temp_lidar_values.reshape(-1,45), axis = 1)
-		return_state = np.concatenate((pose_deepracer,temp_lidar_values))
+		head_to_target = self.get_heading(self.pose_deepracer, self.target_point_)
 
-		random_targets = [[1., -1.], [1., 0.], [1., 1.]]
+		pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]), yaw_car - head_to_target],dtype=np.float32) #relative pose 
+		
+		# return_state = np.concatenate((pose_deepracer,temp_lidar_values))
+
+		random_targets = [[2., -2.],[2., -1.], [2., 0.], [2., 1.], [2., 2.]]
 		target_point = random.choice(random_targets)
 		self.target_point_ = np.array([target_point[0]/MAX_X,target_point[1]/MAX_Y])
 		print("Episode Target Point : ", self.target_point_)
@@ -143,7 +144,7 @@ class DeepracerGym(gym.Env):
 		# if ((max(return_state) > 1.) or (min(return_state < -1.)) or (len(return_state) != 723)):
 		# 	print('-----------------ERROR Reset----------------------')        
 		
-		return return_state
+		return pose_deepracer
 
 	def get_distance(self,x1,x2):
 		# Distance between points x1 and x2
@@ -156,27 +157,16 @@ class DeepracerGym(gym.Env):
 	def get_reward(self,x,y):
 		x_target = self.target_point_[0]
 		y_target = self.target_point_[1]
-		pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]), yaw_car],dtype=np.float32)
-		# x = pose_deepracer[0]
-		# y = pose_deepracer[1]
-		head_to_target = self.get_heading(pose_deepracer, self.target_point_)
-		alpha = head_to_target - pose_deepracer[2]
+		head_to_target = self.get_heading(self.pose_deepracer, self.target_point_)
+		pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]), yaw_car - head_to_target],dtype=np.float32)
+		alpha = yaw_car - head_to_target
 		ld = self.get_distance(pose_deepracer, self.target_point_)
 		crossTrackError = math.sin(alpha) *ld
 		return -1*(abs(crossTrackError)**2 + abs(x - x_target) + abs(y - y_target) + 3*abs (head_to_target - yaw_car)/1.57)/6 # reward is -1*distance to target, limited to [-1,0]
 	
-	def get_reward1(self,x,y):
-		x_target = self.target_point_[0]
-		y_target = self.target_point_[1]
-		head = math.atan((self.target_point_[1]-y)/(self.target_point_[0]-x+0.01))
-		return -(1/3)*(abs(x - x_target) + abs(y - y_target) + abs ((1/3.14)*(head - yaw_car))) # reward is -1*distance to target, limited to [-1,0]
-
 	def step(self,action):
-		global yaw_car, lidar_range_values
-		# self.lidar_ranges_ = np.array(lidar_range_values)
-		self.temp_lidar_values_old = np.nan_to_num(np.array(lidar_range_values), copy=True, posinf=max_lidar_value)
-		self.temp_lidar_values_old = self.temp_lidar_values_old/max_lidar_value
-		self.temp_lidar_values_old = np.min(self.temp_lidar_values_old.reshape(-1,45), axis = 1)
+		global yaw_car
+
 		# print("Least distance to obstacle: ", min(self.temp_lidar_values_old), end = '\r')
 
 		global x_pub
@@ -190,36 +180,31 @@ class DeepracerGym(gym.Env):
 
 		if((abs(pos[0]) < 1.) and (abs(pos[1]) < 1.) ):
 
-			if(abs(pos[0]-self.target_point_[0])<THRESHOLD_DISTANCE_2_GOAL and abs(pos[1]-self.target_point_[1])<THRESHOLD_DISTANCE_2_GOAL):
-				reward = (args.max_episode_length-episode_steps)#10            
+			if(abs(pos[0]-self.target_point_[0])<THRESHOLD_DISTANCE_2_GOAL and  abs(pos[1]-self.target_point_[1])<THRESHOLD_DISTANCE_2_GOAL):
+				reward = 10            
 				done = True
 				print('Goal Reached : ', self.target_point_)
-				print("x distance: {:.2f}, y distance : {:.2f}".format(abs(pos[0]-self.target_point_[0]), abs(pos[1]-self.target_point_[1])))
 
 			else:
 				reward = self.get_reward(pos[0],pos[1])
 
-			pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]), yaw_car],dtype=np.float32) #relative pose
+			head_to_target = self.get_heading(self.pose_deepracer, self.target_point_)
+			pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]), yaw_car - head_to_target],dtype=np.float32) #relative pose
 
 		else: 
 			done = True
 			print('Outside Range')
-			reward = -(args.max_episode_length-episode_steps)#-1
+			reward = -1
 			temp_pos0 = min(max(pos[0],-1.),1.) #keeping it in [-1.,1.]
 			temp_pos1 = min(max(pos[1],-1.),1.) #keeping it in [-1.,1.]
-			print("x distance: {:.2f}, y distance : {:.2f}".format(abs(pos[0]-self.target_point_[0]), abs(pos[1]-self.target_point_[1])))
-			head = math.atan((self.target_point_[1]-pos[1])/(self.target_point_[0]-pos[0]+0.01)) #calculate pose to target dierction
-			pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]), yaw_car],dtype=np.float32) #relative pose 
+			head_to_target = self.get_heading(self.pose_deepracer, self.target_point_)
+			pose_deepracer = np.array([abs(pos[0]-self.target_point_[0]),abs(pos[1]-self.target_point_[1]), yaw_car - head_to_target],dtype=np.float32) #relative pose 
 
 		info = {}
 
 		# self.lidar_ranges_ = np.array(lidar_range_values)
-		
-		temp_lidar_values = np.nan_to_num(np.array(lidar_range_values), copy=True, posinf=max_lidar_value)
-		temp_lidar_values = temp_lidar_values/max_lidar_value
-		temp_lidar_values = np.min(temp_lidar_values.reshape(-1,45), axis = 1)
 
-		return_state = np.concatenate((pose_deepracer,temp_lidar_values))
+	
 		# print("Reward : ", reward, end = '\r')
 		
 		# if ((max(return_state) > 1.) or (min(return_state < -1.)) or (len(return_state) != 723)):
@@ -229,7 +214,7 @@ class DeepracerGym(gym.Env):
 		# 	print(len(return_state))
 		# 	print('-------------------------------------------------')
 
-		return return_state,reward,done,info     
+		return pose_deepracer,reward,done,info     
 
 	def stop_car(self):
 		global x_pub
@@ -251,11 +236,12 @@ writer = SummaryWriter('runs/{}_SAC_{}_{}_{}'.format(datetime.datetime.now().str
 agent = SAC(env.observation_space.shape[0], env.action_space, args)
 state = np.zeros(env.observation_space.shape[0])
 
-
-# actor_path = "models/sac_actor_dubins_gazebo_1"
-# critic_path = "models/sac_critic_dubins_gazebo_1"
-# agent = SAC(env.observation_space.shape[0], env.action_space, args) 
-# agent.load_model(actor_path, critic_path) 
+'''
+actor_path = "models/sac_actor_checkpoint_1"
+critic_path = "models/sac_critic_checkpoint_1"
+agent = SAC(env.observation_space.shape[0], env.action_space, args) 
+agent.load_model(actor_path, critic_path) 
+'''
 
 torch.manual_seed(args.seed)
 np.random.seed(args.seed)
@@ -326,8 +312,8 @@ def pose_callback(pose_data):
 	if total_numsteps > args.num_steps:
 		print('----------------------Training Ending----------------------')
 		env.stop_car()			
-		agent.save_model("dubins_gazebo", suffix = "2")
-	
+		agent.save_model("dubins_gazebo", suffix = "5")
+		ts.unregister()
 
 	if not done:
 
@@ -337,7 +323,7 @@ def pose_callback(pose_data):
 			action = agent.select_action(state)  # Sample action from policy	
 
 		next_state, reward, done, _ = env.step(action) # Step
-		time.sleep(0.05)
+		time.sleep(0.03)
 
 		if (reward > 9) and (episode_steps > 1): #Count the number of times the goal is reached
 			num_goal_reached += 1 
@@ -348,7 +334,6 @@ def pose_callback(pose_data):
 
 		if episode_steps > args.max_episode_length:
 			done = True
-			print("x distance: {:.2f}, y distance : {:.2f}".format(abs(pos[0]-env.target_point_[0]), abs(pos[1]-env.target_point_[1])))
 
 		print(episode_steps, end = '\r')
 		# Ignore the "done" signal if it comes from hitting the time horizon.
@@ -372,14 +357,14 @@ def pose_callback(pose_data):
 		done = False
 
 def start():
-	global ts, state
+	global ts
 	torch.cuda.empty_cache()	
 	rospy.init_node('deepracer_gym', anonymous=True)		
 	pose_sub = rospy.Subscriber("/gazebo/model_states_drop", ModelStates, pose_callback)
 	# lidar_sub = message_filters.Subscriber("/scan", LaserScan)
 	# ts = message_filters.ApproximateTimeSynchronizer([pose_sub,lidar_sub],10,0.1,allow_headerless=True)
 	# ts.registerCallback(filtered_data)
-	state = env.reset()
+	#state = env.reset()
 	rospy.spin()
 
 if __name__ == '__main__':

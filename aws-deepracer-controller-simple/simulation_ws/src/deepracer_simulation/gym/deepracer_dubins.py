@@ -61,7 +61,7 @@ parser.add_argument('--replay_size', type=int, default=100000, metavar='N',
 					help='size of replay buffer (default: 10000000)')
 parser.add_argument('--cuda',type=int, default=1, metavar='N',
 					help='run on CUDA (default: False)')
-parser.add_argument('--max_episode_length', type=int, default=200, metavar='N',
+parser.add_argument('--max_episode_length', type=int, default=400, metavar='N',
 					help='max episode length (default: 3000)')
 args = parser.parse_args()
 rospy.init_node('deepracer_gym', anonymous=True)
@@ -343,8 +343,9 @@ def pose_callback(pose_data):
 		memory.push(state, action, reward, next_state, mask) # Append transition to memory
 		state = next_state
 	else:
-		network_update()
 		state = env.reset()
+		network_update()
+		
 		i_episode += 1
 		
 		if episode_reward >= max_ep_reward:

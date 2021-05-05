@@ -53,7 +53,7 @@ parser.add_argument('--hidden_size', type=int, default=256, metavar='N',
 					help='hidden size (default: 256)')
 parser.add_argument('--updates_per_step', type=int, default=1, metavar='N',
 					help='model updates per simulator step (default: 1)')
-parser.add_argument('--start_steps', type=int, default=10000, metavar='N',
+parser.add_argument('--start_steps', type=int, default=1, metavar='N',
 					help='Steps sampling random actions (default: 10000)')
 parser.add_argument('--target_update_interval', type=int, default=1, metavar='N',
 					help='Value target update per no. of updates per step (default: 1)')
@@ -71,14 +71,14 @@ pos = [0,0]
 old_pos = [0,0]
 lidar_range_values = np.zeros(360)
 yaw_car = 0
-MAX_VEL = 1.7
+MAX_VEL = 1.0
 steer_precision = 0 # 1e-3
-MAX_STEER = (0.4*np.pi) - steer_precision
+MAX_STEER = (0.8*np.pi) - steer_precision
 MAX_YAW = 2*np.pi
 MAX_X = 5
 MAX_Y = 5
 max_lidar_value = 14
-THRESHOLD_DISTANCE_2_GOAL = 0.3/max(MAX_X,MAX_Y)
+THRESHOLD_DISTANCE_2_GOAL = 0.2/max(MAX_X,MAX_Y)
 UPDATE_EVERY = 5
 count = 0
 total_numsteps = 0
@@ -93,7 +93,7 @@ memory = ReplayMemory(args.replay_size, args.seed)
 
 class DeepracerGym(gym.Env):
 
-	def __init__(self):
+	def __init__(self, target_point):
 		super(DeepracerGym,self).__init__()
 		
 		n_actions = 2 #velocity,steering
@@ -109,7 +109,7 @@ class DeepracerGym(gym.Env):
 		self.pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
 		self.unpause = rospy.ServiceProxy('/gazebo/unpause_physics', Empty)
 		self.reset_simulation_proxy = rospy.ServiceProxy('/gazebo/reset_simulation', Empty)
-		self.target_point_ = np.array([0./MAX_X,0./MAX_Y])
+		self.target_point_ = np.array([target_point[0]/MAX_X,target_point[1]/MAX_Y])
 		self.pose_deepracer = np.zeros(3)
 		#self.lidar_ranges_ = np.zeros(720)
 		# self.temp_lidar_values_old = np.zeros(8)
@@ -137,8 +137,8 @@ class DeepracerGym(gym.Env):
 		# return_state = np.concatenate((pose_deepracer,temp_lidar_values))
 
 		random_targets = [[1., -1.], [1., 0.], [1., 1.]]
-		target_point = random.choice(random_targets)
-		self.target_point_ = np.array([target_point[0]/MAX_X,target_point[1]/MAX_Y])
+		# target_point = [1., -1.]# random.choice(random_targets)
+		# self.target_point_ = np.array([target_point[0]/MAX_X,target_point[1]/MAX_Y])
 		print("Episode Target Point : ", self.target_point_)
 		
 		# if ((max(return_state) > 1.) or (min(return_state < -1.)) or (len(return_state) != 723)):
@@ -229,16 +229,16 @@ class DeepracerGym(gym.Env):
 	def close(self):
 		pass
 
-target_point = [7, 8.5]
-env =  DeepracerGym()
+target_point = [1., 1.]
+env =  DeepracerGym(target_point)
 writer = SummaryWriter('runs/{}_SAC_{}_{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), 'DeepracerGym',
 															 args.policy, "autotune" if args.automatic_entropy_tuning else ""))
 # agent = SAC(env.observation_space.shape[0], env.action_space, args)
 # state = np.zeros(env.observation_space.shape[0])
 
 
-actor_path = "models/sac_actor_dubins_gazebo_6"
-critic_path = "models/sac_critic_dubins_gazebo_6"
+actor_path = "models/sac_actor_dubins_gazebo_5"
+critic_path = "models/sac_critic_dubins_gazebo_5"
 agent = SAC(env.observation_space.shape[0], env.action_space, args) 
 agent.load_model(actor_path, critic_path) 
 
@@ -246,27 +246,6 @@ agent.load_model(actor_path, critic_path)
 torch.manual_seed(args.seed)
 np.random.seed(args.seed)
 
-def network_update():
-	global updates, episode_reward, episode_steps, num_goal_reached, i_episode
-	if len(memory) > args.batch_size:
-		# Number of updates per step in environment
-		for i in range(args.updates_per_step*args.max_episode_length):
-			# Update parameters of all the networks
-			critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
-			writer.add_scalar('loss/critic_1', critic_1_loss, updates)
-			writer.add_scalar('loss/critic_2', critic_2_loss, updates)
-			writer.add_scalar('loss/policy', policy_loss, updates)
-			writer.add_scalar('loss/entropy_loss', ent_loss, updates)
-			writer.add_scalar('entropy_temprature/alpha', alpha, updates)
-			updates += 1
-
-		if (episode_steps > 1):
-			writer.add_scalar('reward/train', episode_reward, i_episode)
-			writer.add_scalar('reward/episode_length',episode_steps, i_episode)
-			writer.add_scalar('reward/num_goal_reached',num_goal_reached, i_episode)
-
-		print("Episode: {}, total numsteps: {}, episode steps: {}, reward: {}".format(i_episode, total_numsteps, episode_steps, round(episode_reward, 2)))
-		print("Number of Goals Reached: ",num_goal_reached)
 
 def euler_from_quaternion(x, y, z, w):
 	"""
@@ -305,7 +284,7 @@ def pose_callback(pose_data):
 	yaw = euler[2]
 	yaw_car = yaw
 
-	global lidar_range_values
+	# global lidar_range_values
 	# lidar_range_values = np.array(lidar_data.ranges,dtype=np.float32)
 
 
@@ -314,6 +293,9 @@ def pose_callback(pose_data):
 	# 	env.stop_car()			
 	# 	agent.save_model("dubins_gazebo", suffix = "6")
 	# 	pose_sub.unregister()
+	head_to_target = math.atan2(target_point[1]/MAX_X - pos[1], target_point[0]/MAX_Y - pos[0])
+	state = np.array([abs(pos[0] - (target_point[0]/MAX_X)), abs(pos[1] - (target_point[1]/MAX_Y)), yaw_car - head_to_target])
+	# print("State : ", state)
 
 	if not done:
 
@@ -322,10 +304,10 @@ def pose_callback(pose_data):
 		# else:
 		# 	action = agent.select_action(state)  # Sample action from policy
 
-		action = agent.select_action(state, evaluate=False)	
+		action = agent.select_action(state, evaluate=True)	
+		print("Action : ", action)
 
 		next_state, reward, done, _ = env.step(action) # Step
-		# time.sleep(0.2)
 
 		if (reward > 9) and (episode_steps > 1): #Count the number of times the goal is reached
 			num_goal_reached += 1 
@@ -347,7 +329,7 @@ def pose_callback(pose_data):
 	else:
 		state = env.reset()
 		# network_update()
-		
+		env.stop_car()
 		i_episode += 1
 		
 		# if episode_reward >= max_ep_reward:

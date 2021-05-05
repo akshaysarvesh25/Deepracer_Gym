@@ -47,7 +47,7 @@ parser.add_argument('--seed', type=int, default=123456, metavar='N',
 					help='random seed (default: 123456)')
 parser.add_argument('--batch_size', type=int, default=512, metavar='N',
 					help='batch size (default: 256)')
-parser.add_argument('--num_steps', type=int, default=500000, metavar='N',
+parser.add_argument('--num_steps', type=int, default=1000000, metavar='N',
 					help='maximum number of steps (default: 1000000)')
 parser.add_argument('--hidden_size', type=int, default=256, metavar='N',
 					help='hidden size (default: 256)')
@@ -61,7 +61,7 @@ parser.add_argument('--replay_size', type=int, default=100000, metavar='N',
 					help='size of replay buffer (default: 10000000)')
 parser.add_argument('--cuda',type=int, default=1, metavar='N',
 					help='run on CUDA (default: False)')
-parser.add_argument('--max_episode_length', type=int, default=400, metavar='N',
+parser.add_argument('--max_episode_length', type=int, default=200, metavar='N',
 					help='max episode length (default: 3000)')
 args = parser.parse_args()
 rospy.init_node('deepracer_gym', anonymous=True)
@@ -136,7 +136,7 @@ class DeepracerGym(gym.Env):
 		
 		# return_state = np.concatenate((pose_deepracer,temp_lidar_values))
 
-		random_targets = [[2., -2.],[2., -1.], [2., 0.], [2., 1.], [2., 2.]]
+		random_targets = [[1., -1.], [1., 0.], [1., 1.]]
 		target_point = random.choice(random_targets)
 		self.target_point_ = np.array([target_point[0]/MAX_X,target_point[1]/MAX_Y])
 		print("Episode Target Point : ", self.target_point_)
